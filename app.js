@@ -1,0 +1,655 @@
+// CONFIG: Set your current app version here to compare against GitHub Releases
+const CURRENT_APP_VERSION = "v1.0.0";
+const REPO_LATEST_RELEASE_URL = "https://api.github.com/repos/Juanoto2012/Ventarys-IDX/releases/latest";
+
+// CORE: Handle Electron vs Web dependencies
+let isElectron = false, fs, path, spawn, os, cpModule, https;
+let sysEnvInfo = "Environment: Web Mode (No OS or Terminal access).";
+
+if (typeof require !== 'undefined') {
+    try {
+        cpModule = require('child_process');
+        if (cpModule && cpModule.spawn) {
+            isElectron = true;
+            fs = require('fs');
+            path = require('path');
+            spawn = cpModule.spawn;
+            os = require('os');
+            https = require('https');
+
+            const platform = os.platform();
+            const release = os.release();
+            const shell = platform === 'win32' ? 'powershell.exe' : 'bash';
+
+            sysEnvInfo = `OS: ${platform} (${release}) | Architecture: ${os.arch()}\nDefault Terminal: ${shell}`;
+
+            const versionCmd = platform === 'win32' ? 'powershell -command "$PSVersionTable.PSVersion.ToString()"' : 'bash --version';
+            cpModule.exec(versionCmd, (err, stdout) => {
+                if (!err) sysEnvInfo += `\nTerminal Version: ${stdout.split('\n')[0].trim()}`;
+            });
+        }
+    } catch (e) { console.warn("Running in strict browser environment."); }
+}
+
+// --- AUTO UPDATER SYSTEM FOR PORTABLE .EXE ---
+async function checkForUpdates() {
+    if (!isElectron) return; // Only update if running natively
+    try {
+        const res = await fetch(REPO_LATEST_RELEASE_URL);
+        if (!res.ok) return;
+        const data = await res.json();
+
+        if (data.tag_name && data.tag_name !== CURRENT_APP_VERSION) {
+            const exeAsset = data.assets.find(a => a.name.endsWith('.exe'));
+            if (exeAsset) {
+                showUpdateUI(data.tag_name, exeAsset.browser_download_url);
+            }
+        }
+    } catch (err) {
+        console.warn("Failed to check for updates:", err);
+    }
+}
+
+function showUpdateUI(version, downloadUrl) {
+    const headerActions = document.getElementById('header-actions');
+    const updateBtn = document.createElement('button');
+    updateBtn.className = 'bg-blue-600 hover:bg-blue-700 text-white text-[12px] font-bold py-1 px-3 rounded-lg flex items-center gap-1 transition shadow-sm animate-pulse mr-2';
+    updateBtn.innerHTML = `<span class="material-symbols-rounded text-[14px]">download</span> Update to ${version}`;
+
+    updateBtn.onclick = () => {
+        updateBtn.innerHTML = `<span class="material-symbols-rounded text-[14px] animate-spin">sync</span> Downloading...`;
+        updateBtn.disabled = true;
+        updateBtn.classList.remove('animate-pulse');
+        performPortableUpdate(downloadUrl);
+    };
+
+    headerActions.prepend(updateBtn);
+}
+
+// Helper to safely stream download following redirects natively
+function downloadFileNative(url, dest) {
+    return new Promise((resolve, reject) => {
+        const file = fs.createWriteStream(dest);
+        https.get(url, (response) => {
+            if (response.statusCode === 301 || response.statusCode === 302) {
+                return downloadFileNative(response.headers.location, dest).then(resolve).catch(reject);
+            }
+            if (response.statusCode !== 200) return reject(new Error("Failed with status " + response.statusCode));
+
+            response.pipe(file);
+            file.on('finish', () => file.close(resolve));
+        }).on('error', (err) => {
+            fs.unlink(dest, () => reject(err));
+        });
+    });
+}
+
+async function performPortableUpdate(url) {
+    try {
+        showNotification("Ventarys IDX Updater", "Downloading update in background...");
+        const tempExePath = path.join(os.tmpdir(), 'Ventarys_Update.exe');
+        const currentExePath = process.execPath;
+
+        await downloadFileNative(url, tempExePath);
+        showNotification("Ventarys IDX Updater", "Download complete. Restarting to apply update...");
+
+        // Create a batch script that waits, overwrites the executable, and launches it again
+        const batPath = path.join(os.tmpdir(), 'update_ventarys.bat');
+        const batContent = `
+@echo off
+timeout /t 3 /nobreak > nul
+move /Y "${tempExePath}" "${currentExePath}"
+start "" "${currentExePath}"
+del "%~f0"
+                `.trim();
+
+        fs.writeFileSync(batPath, batContent, 'utf8');
+
+        // Launch detached script to bypass locking rules
+        const child = spawn('cmd.exe', ['/c', batPath], {
+            detached: true,
+            stdio: 'ignore',
+            windowsHide: true
+        });
+        child.unref();
+
+        // Exit app so script can overwrite it
+        if (typeof require !== 'undefined') {
+            const { ipcRenderer } = require('electron');
+            if (ipcRenderer) ipcRenderer.send('quit-app');
+        }
+        setTimeout(() => process.exit(0), 500);
+
+    } catch (err) {
+        alert("Error applying update: " + err.message);
+        const btn = document.querySelector('#header-actions button');
+        if (btn) btn.innerHTML = 'Update Failed';
+    }
+}
+// --- END UPDATER SYSTEM ---
+
+const offScr = document.getElementById('off-scr');
+const updateOnlineStatus = () => { if (navigator.onLine) offScr.classList.add('hidden'); else offScr.classList.remove('hidden'); };
+window.addEventListener('online', updateOnlineStatus); window.addEventListener('offline', updateOnlineStatus); updateOnlineStatus();
+
+function makeResizable(id, pid, isH, dir) { const r = document.getElementById(id), p = document.getElementById(pid); let sP = 0, sS = 0; r.addEventListener('mousedown', e => { e.preventDefault(); sP = isH ? e.clientX : e.clientY; sS = isH ? p.getBoundingClientRect().width : p.getBoundingClientRect().height; document.body.style.cursor = isH ? 'col-resize' : 'row-resize'; r.classList.add('active'); const mv = ev => { const c = isH ? ev.clientX : ev.clientY, d = c - sP, n = dir === 1 ? sS + d : sS - d; if (n > 100 && n < (isH ? window.innerWidth - 100 : window.innerHeight - 100)) { p.style[isH ? 'width' : 'height'] = `${n}px`; if (term) term.fitAddon.fit(); if (editor) editor.resize(); } }; const up = () => { document.removeEventListener('mousemove', mv); document.removeEventListener('mouseup', up); document.body.style.cursor = 'default'; r.classList.remove('active'); }; document.addEventListener('mousemove', mv); document.addEventListener('mouseup', up); }); }
+makeResizable('drag-sidebar', 'panel-sidebar', true, 1); makeResizable('drag-chat', 'panel-chat', true, -1); makeResizable('drag-terminal', 'panel-terminal', false, -1);
+
+const tg = id => { const e = document.getElementById(id); e.style.display = e.style.display === 'none' ? 'flex' : 'none'; if (editor) editor.resize(); };
+document.getElementById('menu-toggle-sidebar').onclick = () => tg('panel-sidebar'); document.getElementById('menu-toggle-terminal').onclick = () => { tg('panel-terminal'); if (term) setTimeout(() => term.fitAddon.fit(), 50); }; document.getElementById('menu-toggle-chat').onclick = () => tg('panel-chat'); document.getElementById('btn-term-close').onclick = () => tg('panel-terminal'); document.getElementById('btn-chat-close').onclick = () => tg('panel-chat');
+
+let ptyProcess = null, term = null, currentFolderPath = '', editor = null;
+let openFiles = [];
+let activeFilePath = null;
+let isEditorUpdating = false;
+
+function initTerminal() {
+    term = new Terminal({ theme: { background: '#1e1e1e', foreground: '#d4d4d4', cursor: '#d4d4d4', selection: '#444' }, fontFamily: 'Consolas, monospace', fontSize: 13, cursorBlink: true, convertEol: true });
+    term.fitAddon = new FitAddon.FitAddon(); term.loadAddon(term.fitAddon);
+    term.open(document.getElementById('terminal-container')); setTimeout(() => term.fitAddon.fit(), 100);
+    window.addEventListener('resize', () => term.fitAddon.fit());
+    if (isElectron) {
+        const shell = os.platform() === 'win32' ? 'powershell.exe' : 'bash';
+        try {
+            ptyProcess = spawn(shell, [], { cwd: os.homedir(), env: process.env, shell: true });
+            ptyProcess.stdout.on('data', d => term.write(d.toString()));
+            ptyProcess.stderr.on('data', d => term.write(d.toString()));
+            term.onData(d => ptyProcess.stdin.write(d));
+            term.write(`\x1b[32m[Ventarys Local Terminal Connected]\x1b[0m\r\n`);
+        } catch (e) { term.write(`\x1b[31mError starting shell: ${e.message}\x1b[0m\r\n`); }
+    } else term.write('\x1b[33mWeb Mode. Local terminal disabled.\x1b[0m\r\n');
+    document.getElementById('btn-term-clear').onclick = () => { term.clear(); if (ptyProcess) ptyProcess.stdin.write('clear\r\n'); };
+}
+
+const providers = { agnes: { url: 'https://apihub.agnes-ai.com/v1', name: 'Agnes' }, aqua: { url: 'https://api.aquadevs.com/v1', name: 'Aqua' } };
+const state = { keys: { agnes: localStorage.getItem('ventarys_key_agnes') || '', aqua: localStorage.getItem('ventarys_key_aqua') || '' }, modelId: localStorage.getItem('ventarys_modelId') || '', sessions: JSON.parse(localStorage.getItem('ventarys_sessions') || '[]'), currentSessionId: localStorage.getItem('ventarys_currentSessionId') || null, attachments: [], isGenerating: false, abortController: null };
+const els = { chatContainer: document.getElementById('chat-container'), chatInput: document.getElementById('chat-input'), btnSend: document.getElementById('btn-send'), sendIcon: document.getElementById('send-icon'), emptyState: document.getElementById('empty-state'), modal: document.getElementById('settings-modal'), modelSelect: document.getElementById('model-select'), errorBox: document.getElementById('settings-error'), historyList: document.getElementById('history-list'), attachBtn: document.getElementById('btn-attach'), fileUpload: document.getElementById('file-upload'), attachmentsPreview: document.getElementById('attachments-preview') };
+
+if (state.sessions.length === 0) createSession();
+else if (!state.sessions.find(s => s.id === state.currentSessionId)) state.currentSessionId = state.sessions[0].id;
+
+function createSession() { const id = 'sess_' + Date.now(); state.sessions.unshift({ id, title: 'New Chat', messages: [], updatedAt: Date.now() }); state.currentSessionId = id; saveHistory(); loadSession(id); }
+function deleteSession(id, e) { e.stopPropagation(); if (confirm('Delete this chat?')) { state.sessions = state.sessions.filter(s => s.id !== id); if (state.sessions.length === 0) createSession(); else if (state.currentSessionId === id) loadSession(state.sessions[0].id); else { saveHistory(); updateHistoryUI(); } } }
+function loadSession(id) { state.currentSessionId = id; localStorage.setItem('ventarys_currentSessionId', id); els.chatContainer.innerHTML = ''; els.chatContainer.appendChild(els.emptyState); const s = state.sessions.find(x => x.id === id); if (s && s.messages.length > 0) { els.emptyState.classList.add('hidden'); s.messages.filter(m => m.role !== 'system' && m.role !== 'tool').forEach(msg => renderMessage(msg.role, msg.content, false)); injectCodeButtons(els.chatContainer); } else els.emptyState.classList.remove('hidden'); scrollToBottom(); updateHistoryUI(); updateCtx(); }
+function getMessages() { return state.sessions.find(s => s.id === state.currentSessionId)?.messages || []; }
+function pushMessage(msg) { const s = state.sessions.find(s => s.id === state.currentSessionId); if (s) { s.messages.push(msg); s.updatedAt = Date.now(); } }
+
+function formatTokens(t) { if (t >= 1000000) return (t / 1000000).toFixed(1) + 'M'; if (t >= 1000) return (t / 1000).toFixed(1) + 'k'; return t.toString(); }
+function getMaxContext(mId) {
+    if (!mId) return 128000;
+    const m = mId.toLowerCase();
+    if (m.includes('gemini-1.5-pro') || m.includes('2m')) return 2000000;
+    if (m.includes('gemini-1.5-flash') || m.includes('1m')) return 1000000;
+    if (m.includes('claude-3') || m.includes('gpt-4') || m.includes('128k')) return 128000;
+    if (m.includes('32k')) return 32000;
+    if (m.includes('16k') || m.includes('gpt-3.5')) return 16000;
+    if (m.includes('llama') || m.includes('8k') || m.includes('mixtral')) return 8192;
+    return 128000;
+}
+
+function updateCtx() {
+    let chars = 0;
+    const msgs = getMessages();
+    if (msgs && msgs.length > 0) chars = JSON.stringify(msgs).length;
+    const tokens = Math.ceil(chars / 3.5);
+    const maxT = getMaxContext(state.modelId);
+    const pct = Math.min(100, (tokens / maxT) * 100);
+
+    document.getElementById('ctx-label').textContent = `${formatTokens(tokens)} / ${formatTokens(maxT)}`;
+    const progress = document.getElementById('ctx-progress');
+    progress.style.width = `${pct}%`;
+
+    if (pct > 90) progress.className = 'h-full bg-red-500 transition-all duration-300';
+    else if (pct > 70) progress.className = 'h-full bg-yellow-500 transition-all duration-300';
+    else progress.className = 'h-full bg-blue-500 transition-all duration-300';
+}
+
+const getSystemPrompt = () => ({
+    role: "system",
+    content: "You are Ventarys IDX, an advanced autonomous software engineering agent. You have full access to the user's local machine, terminal, live editor, and operating system. Think step-by-step. Do not ask for permission to explore, modify code, or run GUI automations if necessary; investigate and solve proactively. To interact directly in the user's code as a 'Second Cursor', use 'ide_live_edit'. To automate the OS at the interface level (clicks, macros), use 'run_automation_script'. Your response must be highly technical, professional, and in Markdown.\n\n### LOCAL ENVIRONMENT INFO ###\n" + sysEnvInfo
+});
+
+const toolsDefinition = [
+    { type: "function", function: { name: "execute_terminal", description: "Executes a command in the user's local terminal.", parameters: { type: "object", properties: { command: { type: "string" } }, required: ["command"] } } },
+    { type: "function", function: { name: "execute_git_command", description: "Executes a Git command in the current repository.", parameters: { type: "object", properties: { args: { type: "string", description: "Arguments after 'git '. Ex: 'status' or 'commit -m \"fix\"'" } }, required: ["args"] } } },
+    { type: "function", function: { name: "list_directory", description: "Lists local files and folders.", parameters: { type: "object", properties: { path: { type: "string" } }, required: ["path"] } } },
+    { type: "function", function: { name: "read_file", description: "Reads a local file.", parameters: { type: "object", properties: { file_path: { type: "string" } }, required: ["file_path"] } } },
+    { type: "function", function: { name: "write_file", description: "Creates or overwrites a local file with the provided content. Use it to create code directly on the PC.", parameters: { type: "object", properties: { file_path: { type: "string", description: "File path" }, content: { type: "string", description: "File content" } }, required: ["file_path", "content"] } } },
+    { type: "function", function: { name: "ide_live_edit", description: "Acts as an AI SECOND CURSOR. Inserts code directly into the user's visible editor in real-time at the specified line.", parameters: { type: "object", properties: { file_path: { type: "string", description: "Path of the file currently being edited." }, line: { type: "number", description: "Line number where the cursor will be positioned to insert." }, code: { type: "string", description: "The code to insert at that line." } }, required: ["file_path", "line", "code"] } } },
+    { type: "function", function: { name: "run_automation_script", description: "Creates and runs a local script (Python, Node, PowerShell, Bash) to control and automate the OS (mouse movement, clicks, keyboard). Ideal if the user asks you to create macros or automate tasks.", parameters: { type: "object", properties: { language: { type: "string", enum: ["python", "node", "powershell", "bash"] }, script: { type: "string", description: "The complete automation script." } }, required: ["language", "script"] } } }
+];
+
+function showNotification(title, body) { if (Notification.permission === 'granted') new Notification(title, { body, icon: 'assets/logo.png' }); else if (Notification.permission !== 'denied') Notification.requestPermission().then(p => { if (p === 'granted') new Notification(title, { body, icon: 'assets/logo.png' }); }); }
+
+function getFileIcon(filename) {
+    const ex = filename.split('.').pop().toLowerCase();
+    const m = {
+        'js': 'javascript-plain', 'ts': 'typescript-plain', 'jsx': 'react-original', 'tsx': 'react-original',
+        'py': 'python-plain', 'html': 'html5-plain', 'css': 'css3-plain', 'json': 'json-plain',
+        'java': 'java-plain', 'cpp': 'cplusplus-plain', 'c': 'c-plain', 'php': 'php-plain',
+        'md': 'markdown-original', 'xml': 'xml-plain', 'yml': 'yaml-plain', 'yaml': 'yaml-plain',
+        'sql': 'mysql-plain', 'sh': 'bash-plain', 'go': 'go-plain', 'rs': 'rust-plain',
+        'rb': 'ruby-plain', 'swift': 'swift-plain', 'kt': 'kotlin-plain', 'dart': 'dart-plain',
+        'vue': 'vuejs-plain', 'svelte': 'svelte-plain', 'scss': 'sass-original', 'less': 'less-plain-wordmark'
+    };
+    if (m[ex]) return `<i class="devicon-${m[ex]} colored text-[14px]"></i>`;
+    return `<span class="material-symbols-rounded text-[14px] text-gray-400">description</span>`;
+}
+
+function renderTabs() {
+    const container = document.getElementById('editor-tabs');
+    container.innerHTML = '';
+    if (openFiles.length === 0) {
+        container.innerHTML = '<div class="text-xs text-gray-400 pl-2 py-1.5 italic select-none">No files open</div>';
+        document.getElementById('btn-save-file').classList.add('hidden');
+        return;
+    }
+    document.getElementById('btn-save-file').classList.remove('hidden');
+    openFiles.forEach(f => {
+        const isAct = f.path === activeFilePath;
+        const name = path.basename(f.path);
+        const tab = document.createElement('div');
+        tab.className = `flex items-center gap-2 px-3 h-full cursor-pointer min-w-[100px] max-w-[200px] group select-none rounded-t-lg border border-b-0 transition-colors ${isAct ? 'bg-white border-gray-200 text-gray-800 relative shadow-[0_-2px_0_#3b82f6_inset]' : 'bg-transparent border-transparent hover:bg-gray-200 text-gray-500'}`;
+        tab.innerHTML = `<div class="flex items-center gap-2 truncate flex-1" title="${f.path}">${getFileIcon(name)} <span class="truncate text-[12px] font-medium mt-0.5">${name}</span> ${f.isDirty ? '<span class="w-2 h-2 rounded-full bg-blue-500 shrink-0"></span>' : ''}</div> <button class="shrink-0 p-0.5 rounded-md hover:bg-gray-300 opacity-0 group-hover:opacity-100 transition ${isAct ? 'opacity-100' : ''}" onclick="closeFile('${f.path.replace(/\\/g, '\\\\')}', event)"><span class="material-symbols-rounded text-[14px]">close</span></button>`;
+        tab.onclick = () => { activeFilePath = f.path; renderTabs(); updateEditorToActiveFile(); };
+        container.appendChild(tab);
+    });
+}
+
+window.closeFile = function (fp, e) {
+    e.stopPropagation();
+    const idx = openFiles.findIndex(f => f.path === fp);
+    if (idx > -1) {
+        openFiles.splice(idx, 1);
+        if (activeFilePath === fp) {
+            if (openFiles.length > 0) activeFilePath = openFiles[Math.max(0, idx - 1)].path;
+            else activeFilePath = null;
+        }
+        renderTabs(); updateEditorToActiveFile();
+    }
+};
+
+function updateEditorToActiveFile() {
+    if (!activeFilePath) {
+        isEditorUpdating = true; editor.setValue('', -1); editor.setReadOnly(true); isEditorUpdating = false;
+        return;
+    }
+    editor.setReadOnly(false);
+    const f = openFiles.find(x => x.path === activeFilePath);
+    if (!f) return;
+
+    isEditorUpdating = true;
+    const ex = activeFilePath.split('.').pop().toLowerCase();
+    let md = "text";
+    if (['js', 'ts', 'jsx', 'tsx'].includes(ex)) md = "javascript";
+    else if (['html', 'css', 'json', 'xml', 'markdown', 'python', 'php', 'java', 'c_cpp'].includes(ex)) md = ex;
+    else if (ex === 'py') md = 'python';
+    else if (['c', 'cpp', 'h'].includes(ex)) md = 'c_cpp';
+
+    editor.session.setMode("ace/mode/" + md);
+    if (editor.getValue() !== f.content) editor.setValue(f.content, -1);
+    isEditorUpdating = false;
+}
+
+function openFile(fp) {
+    try {
+        if (!openFiles.find(f => f.path === fp)) { const content = fs.readFileSync(fp, 'utf-8'); openFiles.push({ path: fp, content: content, isDirty: false }); }
+        activeFilePath = fp; renderTabs(); updateEditorToActiveFile();
+    } catch (err) { console.error(err); }
+}
+
+function saveCurrentFile() {
+    if (!isElectron || !activeFilePath) return;
+    try {
+        const content = editor.getValue();
+        fs.writeFileSync(activeFilePath, content, 'utf8');
+        const f = openFiles.find(x => x.path === activeFilePath);
+        if (f) { f.content = content; f.isDirty = false; renderTabs(); }
+        const btn = document.getElementById('btn-save-file');
+        btn.innerHTML = '<span class="material-symbols-rounded text-[14px]">check</span> Saved!';
+        setTimeout(() => btn.innerHTML = 'Save (Ctrl+S)', 2000);
+    } catch (e) { alert("Error saving: " + e.message); }
+}
+
+async function updatePuterUser() { if (typeof puter !== 'undefined' && puter.auth.isSignedIn()) { try { const u = await puter.auth.getUser(); document.getElementById('puter-user').textContent = u.username; } catch (e) { } } }
+async function syncWithPuter() {
+    const btn = document.getElementById('btn-puter-sync'); btn.innerHTML = '<span class="material-symbols-rounded text-[16px] animate-spin">sync</span>';
+    try {
+        if (!puter.auth.isSignedIn()) { await puter.auth.signIn(); await updatePuterUser(); }
+        const data = JSON.stringify({ sessions: state.sessions, keys: state.keys });
+        await puter.fs.write('ventarys_studio_backup.json', data);
+        showNotification('Ventarys IDX', 'Successfully synced with Puter.');
+    } catch (e) { alert('Sync error: ' + e.message); }
+    btn.innerHTML = '<span class="material-symbols-rounded text-[16px]">cloud_sync</span>';
+}
+
+document.getElementById('btn-vscode').onclick = () => { if (isElectron && currentFolderPath) { cpModule.exec(`code "${currentFolderPath}"`, (err) => { if (err) alert("VSCode was not found in your PATH."); }); } };
+
+function init() {
+    initTerminal();
+    editor = ace.edit("file-editor");
+    editor.setTheme("ace/theme/textmate");
+    editor.setOptions({ fontFamily: "Consolas, monospace", fontSize: "14px", showPrintMargin: false, enableBasicAutocompletion: true, enableLiveAutocompletion: true });
+    window.addEventListener('resize', () => editor.resize());
+    editor.commands.addCommand({ name: 'save', bindKey: { win: "Ctrl-S", "mac": "Cmd-S" }, exec: saveCurrentFile });
+
+    editor.session.on('change', () => {
+        if (isEditorUpdating) return;
+        if (activeFilePath) {
+            const f = openFiles.find(x => x.path === activeFilePath);
+            if (f) {
+                const currentVal = editor.getValue();
+                if (f.content !== currentVal) { f.content = currentVal; if (!f.isDirty) { f.isDirty = true; renderTabs(); } }
+            }
+        }
+    });
+
+    document.getElementById('btn-save-file').onclick = saveCurrentFile;
+    document.getElementById('btn-new-chat').onclick = createSession;
+    document.getElementById('btn-puter-sync').onclick = syncWithPuter;
+    if (state.modelId && !state.modelId.includes('|')) { state.modelId = ''; localStorage.removeItem('ventarys_modelId'); }
+
+    const switchTab = (t, b) => {
+        document.getElementById('tab-explorer').className = 'pb-1.5 tab-inactive hover:text-black transition';
+        document.getElementById('tab-history').className = 'pb-1.5 tab-inactive hover:text-black transition';
+        b.className = 'pb-1.5 tab-active transition';
+        document.getElementById('view-explorer').classList.add('hidden');
+        document.getElementById('view-history').classList.add('hidden');
+        document.getElementById(`view-${t}`).classList.remove('hidden'); document.getElementById(`view-${t}`).classList.add('flex');
+    };
+    document.getElementById('tab-explorer').onclick = e => switchTab('explorer', e.target);
+    document.getElementById('tab-history').onclick = e => switchTab('history', e.target);
+    document.getElementById('menu-open-folder').onclick = () => document.getElementById('folder-input').click();
+    document.getElementById('folder-input').addEventListener('change', handleFolderSelect);
+    document.getElementById('btn-refresh-folder').onclick = () => { if (currentFolderPath) { const u = document.getElementById('file-list'); u.innerHTML = ''; loadFolderTree(currentFolderPath, u); } };
+
+    document.getElementById('api-key-agnes').value = state.keys.agnes;
+    document.getElementById('api-key-aqua').value = state.keys.aqua;
+    document.getElementById('menu-settings').onclick = () => els.modal.classList.remove('hidden');
+    document.getElementById('btn-close-settings').onclick = () => els.modal.classList.add('hidden');
+    document.getElementById('btn-save-settings').onclick = saveSettings;
+    document.getElementById('btn-fetch-models').onclick = fetchModels;
+
+    els.btnSend.onclick = () => handleSendOrStop(false);
+    els.chatInput.addEventListener('keydown', e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); if (!els.btnSend.disabled) handleSendOrStop(false); } });
+    els.chatInput.addEventListener('input', function () { this.style.height = 'auto'; this.style.height = Math.min(this.scrollHeight, 200) + 'px'; updateSendButtonState(); });
+    els.attachBtn.onclick = () => els.fileUpload.click();
+    els.fileUpload.onchange = handleFileUpload;
+
+    loadSession(state.currentSessionId);
+    if (state.keys.agnes || state.keys.aqua) fetchModels(false); else setTimeout(() => els.modal.classList.remove('hidden'), 500);
+    if (Notification.permission !== 'granted' && Notification.permission !== 'denied') Notification.requestPermission();
+
+    updateCtx();
+    updatePuterUser();
+    checkForUpdates(); // Check for updates on startup
+}
+
+function handleFolderSelect(e) { if (!isElectron) return alert("Electron environment required."); const f = e.target.files[0]; if (f && f.path) { const rr = f.webkitRelativePath.split('/')[0], ae = f.path.indexOf(path.normalize(rr)); currentFolderPath = ae !== -1 ? path.join(f.path.substring(0, ae), rr) : path.dirname(f.path); document.getElementById('folder-name-label').textContent = path.basename(currentFolderPath); document.getElementById('btn-refresh-folder').classList.remove('hidden'); document.getElementById('btn-vscode').classList.remove('hidden'); const u = document.getElementById('file-list'); u.innerHTML = ''; loadFolderTree(currentFolderPath, u); if (ptyProcess) { ptyProcess.stdin.write(`cd "${currentFolderPath}"\r\nclear\r\n`); setTimeout(() => term.scrollToBottom(), 100); } } }
+
+function loadFolderTree(fp, cu) {
+    try {
+        const files = fs.readdirSync(fp, { withFileTypes: true });
+        files.sort((a, b) => { if (a.isDirectory() && !b.isDirectory()) return -1; if (!a.isDirectory() && b.isDirectory()) return 1; return a.name.localeCompare(b.name); });
+        files.forEach(f => {
+            if (f.name.startsWith('.')) return;
+            const li = document.createElement('li');
+            if (f.isDirectory()) {
+                li.innerHTML = `<div class="folder-toggle cursor-pointer hover:bg-gray-200 py-1 px-2 rounded-lg flex items-center gap-2 text-gray-800 font-semibold select-none truncate transition"><span class="material-symbols-rounded text-[16px] text-gray-500">folder</span> ${f.name}</div><ul class="hidden pl-4 border-l-2 border-gray-100 ml-2 mt-1 space-y-1"></ul>`;
+                const td = li.querySelector('.folder-toggle'), cUl = li.querySelector('ul');
+                td.onclick = () => { td.classList.toggle('open'); cUl.classList.toggle('hidden'); if (!cUl.hasChildNodes()) { cUl.innerHTML = ''; loadFolderTree(path.join(fp, f.name), cUl); } };
+            } else {
+                li.innerHTML = `<div class="cursor-pointer hover:bg-gray-200 py-1 pl-6 pr-2 rounded-lg flex items-center gap-2 text-gray-700 truncate select-none transition font-medium">${getFileIcon(f.name)} <span class="truncate mt-0.5">${f.name}</span></div>`;
+                li.onclick = () => openFile(path.join(fp, f.name));
+            }
+            cu.appendChild(li);
+        });
+    } catch (err) { console.error(err); }
+}
+
+function handleFileUpload(e) { Array.from(e.target.files).forEach(f => { const r = new FileReader(); r.onload = ev => { state.attachments.push({ name: f.name, type: f.type.startsWith('image/') ? 'image' : 'file', data: ev.target.result, rawFile: f }); renderAttachmentsPreview(); updateSendButtonState(); }; if (f.type.startsWith('image/')) r.readAsDataURL(f); else r.readAsText(f); }); e.target.value = ''; }
+function renderAttachmentsPreview() { els.attachmentsPreview.innerHTML = ''; if (state.attachments.length === 0) { els.attachmentsPreview.classList.add('hidden'); return; } els.attachmentsPreview.classList.remove('hidden'); state.attachments.forEach((a, i) => { const d = document.createElement('div'); d.className = 'relative shrink-0 border border-gray-200 rounded-xl bg-white overflow-hidden shadow-sm flex items-center justify-center w-14 h-14 group'; if (a.type === 'image') d.innerHTML = `<img src="${a.data}" class="w-full h-full object-cover">`; else d.innerHTML = `<div class="text-[9px] font-bold text-center break-all p-1 text-gray-600">${a.name.substring(0, 12)}</div>`; const b = document.createElement('button'); b.className = 'absolute top-0 right-0 bg-white/90 hover:bg-red-500 hover:text-white text-black p-0.5 rounded-bl-lg hidden group-hover:block transition'; b.innerHTML = `<span class="material-symbols-rounded text-[12px]">close</span>`; b.onclick = () => { state.attachments.splice(i, 1); renderAttachmentsPreview(); updateSendButtonState(); }; d.appendChild(b); els.attachmentsPreview.appendChild(d); }); }
+function updateSendButtonState() { if (state.isGenerating) els.btnSend.disabled = false; else els.btnSend.disabled = els.chatInput.value.trim().length === 0 && state.attachments.length === 0; }
+async function fetchModels(se = true) { const k = { agnes: document.getElementById('api-key-agnes').value.trim(), aqua: document.getElementById('api-key-aqua').value.trim() }; els.modelSelect.innerHTML = '<option value="">Loading Models...</option>'; let am = []; const ff = async (pk, ks) => { if (!ks) return; try { const r = await fetch(`${providers[pk].url}/models`, { headers: { 'Authorization': `Bearer ${ks}` } }); if (r.ok) { const d = await r.json(); (d.data || []).forEach(m => { if (m.id.toLowerCase().includes('video')) return; if (pk === 'aqua') { const t = String(m.tier || '').toLowerCase(); if (m.tier && !t.includes('standar')) return; if (!m.tier && (m.id.toLowerCase().includes('pro') || m.id.toLowerCase().includes('premium'))) return; } am.push({ id: m.id, provider: pk, label: `[${providers[pk].name}] ${m.id}` }); }); } } catch (e) { } }; await Promise.all([ff('agnes', k.agnes), ff('aqua', k.aqua)]); els.modelSelect.innerHTML = ''; if (am.length === 0) { els.modelSelect.innerHTML = '<option value="">No models found</option>'; if (se) { els.errorBox.textContent = 'Error fetching models. Check API Keys.'; els.errorBox.classList.remove('hidden'); } return; } am.sort((a, b) => a.label.localeCompare(b.label)).forEach(m => { const o = document.createElement('option'); o.value = `${m.provider}|${m.id}`; o.textContent = m.label; if (o.value === state.modelId) o.selected = true; els.modelSelect.appendChild(o); }); if (!state.modelId || !am.find(m => `${m.provider}|${m.id}` === state.modelId)) state.modelId = els.modelSelect.value; updateCtx(); }
+function saveSettings() { state.keys.agnes = document.getElementById('api-key-agnes').value.trim(); state.keys.aqua = document.getElementById('api-key-aqua').value.trim(); localStorage.setItem('ventarys_key_agnes', state.keys.agnes); localStorage.setItem('ventarys_key_aqua', state.keys.aqua); state.modelId = els.modelSelect.value; localStorage.setItem('ventarys_modelId', state.modelId); updateCtx(); els.modal.classList.add('hidden'); } els.modelSelect.addEventListener('change', e => { state.modelId = e.target.value; localStorage.setItem('ventarys_modelId', state.modelId); updateCtx(); });
+function saveHistory() { try { localStorage.setItem('ventarys_sessions', JSON.stringify(state.sessions)); } catch (e) { state.sessions = state.sessions.slice(0, 10); try { localStorage.setItem('ventarys_sessions', JSON.stringify(state.sessions)); } catch (err) { localStorage.setItem('ventarys_sessions', '[]'); } } updateCtx(); }
+marked.setOptions({ highlight: (c, l) => hljs.highlight(c, { language: hljs.getLanguage(l) ? l : 'plaintext' }).value, breaks: true, gfm: true });
+function updateHistoryUI() { els.historyList.innerHTML = '';[...state.sessions].sort((a, b) => b.updatedAt - a.updatedAt).forEach(s => { const li = document.createElement('li'); li.className = `truncate py-2 px-3 rounded-lg cursor-pointer text-[12px] font-medium transition flex justify-between items-center group ${s.id === state.currentSessionId ? 'bg-gray-200 text-black' : 'hover:bg-gray-100 text-gray-700'}`; li.innerHTML = `<span class="truncate flex-1">${s.title}</span> <button class="hidden group-hover:block text-red-500 hover:text-red-700 ml-2 p-1 rounded hover:bg-red-50" onclick="deleteSession('${s.id}', event)"><span class="material-symbols-rounded text-[14px]">delete</span></button>`; li.onclick = () => loadSession(s.id); els.historyList.appendChild(li); }); }
+
+function renderMessage(role, c, isS = false) {
+    els.emptyState.classList.add('hidden'); const md = document.createElement('div'); let dc = c; if (Array.isArray(c)) dc = c.filter(x => x.type === 'text').map(x => x.text).join('\n') || "[Attached Files]";
+    if (role === 'user') {
+        md.className = 'bg-gray-200 p-3.5 rounded-2xl rounded-tr-sm text-[14px] text-gray-900 self-end ml-10 whitespace-pre-wrap shadow-sm max-w-[90%] font-medium';
+        md.textContent = dc; els.chatContainer.appendChild(md);
+    } else {
+        md.className = 'w-full text-[14px] text-gray-800 pr-2 flex flex-col gap-3 bg-white p-4 rounded-2xl rounded-tl-sm shadow-sm border border-gray-100 transition-all';
+        md.innerHTML = `<div class="markdown-body">${dc ? DOMPurify.sanitize(marked.parse(dc)) : (isS ? '<span class="animate-pulse">● ● ●</span>' : '')}</div><div class="tools-container empty:hidden flex flex-col gap-2"></div>`;
+        els.chatContainer.appendChild(md);
+    }
+    scrollToBottom();
+    return md;
+}
+
+// --- APPLY CODE SYSTEM (CURSOR VIBE) ---
+function injectCodeButtons(container) {
+    container.querySelectorAll('pre').forEach(pre => {
+        if (pre.querySelector('.actions-wrapper')) return;
+        pre.classList.add('relative', 'group');
+
+        const actionsDiv = document.createElement('div');
+        actionsDiv.className = 'actions-wrapper absolute top-2 right-2 flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity z-10';
+
+        const copyBtn = document.createElement('button');
+        copyBtn.className = 'bg-gray-800/90 text-white text-[10px] px-2 py-1.5 rounded-lg hover:bg-gray-700 transition-all shadow-md font-medium flex items-center gap-1';
+        copyBtn.innerHTML = '<span class="material-symbols-rounded text-[14px]">content_copy</span> Copy';
+        copyBtn.onclick = () => {
+            navigator.clipboard.writeText(pre.querySelector('code').innerText);
+            copyBtn.innerHTML = '<span class="material-symbols-rounded text-[14px]">check</span> Copied';
+            setTimeout(() => copyBtn.innerHTML = '<span class="material-symbols-rounded text-[14px]">content_copy</span> Copy', 2000);
+        };
+
+        const applyBtn = document.createElement('button');
+        applyBtn.className = 'bg-blue-600/90 text-white text-[10px] px-2.5 py-1.5 rounded-lg hover:bg-blue-700 transition-all shadow-md font-bold flex items-center gap-1.5';
+        applyBtn.innerHTML = '<span class="material-symbols-rounded text-[14px]">edit_document</span> Apply';
+        applyBtn.onclick = () => {
+            if (!editor || !activeFilePath) { alert('Open a file in the editor to apply the code.'); return; }
+            const code = pre.querySelector('code').innerText;
+            const sel = editor.getSelectionRange();
+            if (sel.isEmpty()) editor.insert(code);
+            else editor.session.replace(sel, code);
+
+            applyBtn.innerHTML = '<span class="material-symbols-rounded text-[14px]">check</span> Applied';
+            applyBtn.classList.replace('bg-blue-600/90', 'bg-green-600/90');
+            setTimeout(() => { applyBtn.innerHTML = '<span class="material-symbols-rounded text-[14px]">edit_document</span> Apply'; applyBtn.classList.replace('bg-green-600/90', 'bg-blue-600/90'); }, 2000);
+        };
+
+        actionsDiv.appendChild(copyBtn); actionsDiv.appendChild(applyBtn); pre.appendChild(actionsDiv);
+    });
+}
+
+function scrollToBottom() { els.chatContainer.scrollTo({ top: els.chatContainer.scrollHeight, behavior: 'smooth' }); }
+
+// --- AUTONOMOUS SYSTEM & SECOND CURSOR TOOLS ---
+async function runLocalTool(c) {
+    if (!isElectron) return "Critical Error: The user is in the Web version. Local tools require the downloadable Electron version of Ventarys.";
+    const n = c.function.name;
+    let a = {};
+    try { a = JSON.parse(c.function.arguments); } catch (e) { return "Error parsing args."; }
+    const cwd = currentFolderPath || os.homedir();
+
+    if (n === 'execute_terminal') {
+        if (term && ptyProcess) { ptyProcess.stdin.write(`${a.command}\r\n`); term.focus(); }
+        return new Promise(res => { cpModule.exec(a.command, { cwd }, (err, out, stde) => res(out || stde || "Command executed.")); });
+    } else if (n === 'execute_git_command') {
+        const cmd = `git ${a.args}`;
+        if (term && ptyProcess) { ptyProcess.stdin.write(`${cmd}\r\n`); term.focus(); }
+        return new Promise(res => { cpModule.exec(cmd, { cwd }, (err, out, stde) => res(out || stde || "Git command executed.")); });
+    } else if (n === 'list_directory') {
+        try { const f = fs.readdirSync(path.resolve(cwd, a.path || '.'), { withFileTypes: true }); return `Dir of ${a.path || '.'}:\n` + f.map(x => `${x.isDirectory() ? '[DIR] ' : '[FILE]'} ${x.name}`).join('\n'); } catch (e) { return `Error: ${e.message}`; }
+    } else if (n === 'read_file') {
+        try { return fs.readFileSync(path.resolve(cwd, a.file_path), 'utf8').substring(0, 8000); } catch (e) { return `Error: ${e.message}`; }
+    } else if (n === 'write_file') {
+        try { const tp = path.resolve(cwd, a.file_path); fs.writeFileSync(tp, a.content, 'utf8'); return `File successfully saved at ${tp}`; } catch (e) { return `Write error: ${e.message}`; }
+    } else if (n === 'ide_live_edit') {
+        if (activeFilePath && path.normalize(activeFilePath) === path.normalize(a.file_path) && editor) {
+            try {
+                isEditorUpdating = true;
+                editor.gotoLine(a.line, 0, true);
+                editor.insert(a.code + "\n");
+
+                const cursorNode = document.querySelector('.ace_cursor');
+                if (cursorNode) {
+                    cursorNode.classList.add('ai-cursor');
+                    setTimeout(() => cursorNode.classList.remove('ai-cursor'), 2500);
+                }
+                isEditorUpdating = false;
+                saveCurrentFile();
+                return `Second cursor executed: Code inserted successfully at line ${a.line}.`;
+            } catch (e) {
+                isEditorUpdating = false;
+                return `Error editing in IDE: ${e.message}`;
+            }
+        } else {
+            return `File ${a.file_path} is NOT the active file currently in the IDE. Use the write_file tool instead.`;
+        }
+    } else if (n === 'run_automation_script') {
+        try {
+            const ext = a.language === 'python' ? 'py' : a.language === 'node' ? 'js' : a.language === 'powershell' ? 'ps1' : 'sh';
+            const tmpPath = path.join(os.tmpdir(), `ventarys_auto_${Date.now()}.${ext}`);
+            fs.writeFileSync(tmpPath, a.script, 'utf8');
+
+            let cmd = '';
+            if (a.language === 'python') cmd = `python "${tmpPath}"`;
+            else if (a.language === 'node') cmd = `node "${tmpPath}"`;
+            else if (a.language === 'powershell') cmd = `powershell -ExecutionPolicy Bypass -File "${tmpPath}"`;
+            else cmd = `bash "${tmpPath}"`;
+
+            if (term && ptyProcess) {
+                ptyProcess.stdin.write(`\x1b[35m# Starting Agent Automation...\x1b[0m\r\n`);
+                ptyProcess.stdin.write(`${cmd}\r\n`);
+                term.focus();
+            }
+
+            return new Promise(res => {
+                cpModule.exec(cmd, { cwd }, (err, out, stde) => {
+                    fs.unlink(tmpPath, () => { });
+                    res(`OS Automation executed.\nOutput: ${out || stde || "Clean execution with no console output."}`);
+                });
+            });
+        } catch (e) { return `Critical error in automation execution: ${e.message}`; }
+    }
+    return "Unknown tool called by the Agent."
+}
+
+async function handleSendOrStop(iAR = false) {
+    if (state.isGenerating && !iAR) { if (state.abortController) state.abortController.abort(); state.isGenerating = false; els.sendIcon.textContent = 'arrow_upward'; els.sendIcon.classList.remove('text-red-500'); updateSendButtonState(); return; }
+    if (!state.modelId) { els.modal.classList.remove('hidden'); return; }
+    const [pK, rM] = state.modelId.split('|'), aK = state.keys[pK];
+    if (!aK) { alert('API Keys are missing.'); return; }
+    const pt = els.chatInput.value.trim();
+    if (!pt && state.attachments.length === 0 && !iAR) return;
+
+    if (!iAR) {
+        state.isGenerating = true; els.sendIcon.textContent = 'square'; els.sendIcon.classList.add('text-red-500'); els.chatInput.value = ''; els.chatInput.style.height = 'auto';
+        let uc = pt, cs = "";
+        const tf = state.attachments.filter(a => a.type === 'file');
+        if (tf.length > 0) cs = tf.map(f => `\n--- Attached File: ${f.name} ---\n${f.data}`).join('\n');
+        const ec = editor ? editor.getValue() : '', fn = activeFilePath ? path.basename(activeFilePath) : 'None';
+        if (ec && activeFilePath) cs += `\n--- Active File in Editor: ${fn} ---\n${ec.substring(0, 4000)}`;
+        if (cs) uc = `${cs}\n\nUser:\n${pt}`;
+        const img = state.attachments.filter(a => a.type === 'image');
+        let fc = uc;
+        if (img.length > 0) { fc = [{ type: "text", text: uc }]; img.forEach(i => fc.push({ type: "image_url", image_url: { url: i.data } })); }
+
+        pushMessage({ role: 'user', content: fc });
+        const s = state.sessions.find(x => x.id === state.currentSessionId);
+        if (s && s.title === 'New Chat') s.title = pt.substring(0, 25) + (pt.length > 25 ? '...' : '');
+
+        renderMessage('user', pt || "[Attached File(s)]");
+        updateHistoryUI(); updateCtx();
+        state.attachments = []; renderAttachmentsPreview(); updateSendButtonState();
+    }
+
+    const mn = renderMessage('assistant', '', true), cn = mn.querySelector('.markdown-body'), tn = mn.querySelector('.tools-container');
+    state.abortController = new AbortController(); let sR = false;
+
+    try {
+        const msgs = getMessages();
+        const res = await fetch(`${providers[pK].url}/chat/completions`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${aK}` }, body: JSON.stringify({ model: rM, messages: [getSystemPrompt(), ...msgs], stream: true, tools: toolsDefinition, tool_choice: "auto" }), signal: state.abortController.signal });
+        if (!res.ok) throw new Error(`HTTP network error ${res.status}`);
+        const rd = res.body.getReader(), dc = new TextDecoder("utf-8");
+        let dn = false, bf = "", fr = "", tcD = {};
+
+        while (!dn) {
+            const { value, done: rDn } = await rd.read(); dn = rDn;
+            if (value) {
+                bf += dc.decode(value, { stream: true }); const lns = bf.split('\n'); bf = lns.pop();
+                for (let l of lns) {
+                    l = l.trim(); if (!l || !l.startsWith('data: ')) continue;
+                    const ds = l.substring(6).trim(); if (ds === '[DONE]') { dn = true; break; }
+                    try {
+                        const p = JSON.parse(ds), dl = p.choices[0]?.delta || {};
+                        if (dl.content) { fr += dl.content; cn.innerHTML = DOMPurify.sanitize(marked.parse(fr)); scrollToBottom(); }
+                        if (dl.tool_calls) {
+                            for (let tc of dl.tool_calls) {
+                                if (!tcD[tc.index]) {
+                                    const uId = tc.id || `call_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+                                    tcD[tc.index] = { id: uId, type: "function", function: { name: tc.function?.name || "", arguments: "" } };
+                                    const tU = document.createElement('div'); tU.id = `tool-call-${uId}`;
+                                    tU.className = 'p-3 bg-gray-50 border border-gray-200 rounded-xl text-[12px] text-gray-700 flex flex-col gap-2 shadow-sm mt-2 transition-all';
+                                    tU.innerHTML = `<div class="flex items-center gap-2 font-bold"><span class="material-symbols-rounded text-[16px] animate-spin text-blue-500" id="tool-icon-${uId}">sync</span><span id="tool-name-${uId}">${tc.function?.name || 'tool'}</span></div><div class="text-[11px] text-gray-500 font-mono bg-white border border-gray-200 p-2 rounded-lg max-h-24 overflow-y-auto" id="tool-args-${uId}">...</div>`;
+                                    tn.appendChild(tU);
+                                }
+                                const cId = tcD[tc.index].id;
+                                if (tc.function?.name && !tcD[tc.index].function.name) {
+                                    tcD[tc.index].function.name = tc.function.name;
+                                    document.getElementById(`tool-name-${cId}`).textContent = tc.function.name;
+                                }
+                                if (tc.function?.arguments) {
+                                    tcD[tc.index].function.arguments += tc.function.arguments;
+                                    document.getElementById(`tool-args-${cId}`).textContent = tcD[tc.index].function.arguments;
+                                }
+                            }
+                            scrollToBottom();
+                        }
+                    } catch (e) { }
+                }
+            }
+        }
+
+        let tca = Object.values(tcD);
+        if (tca.length > 0) {
+            pushMessage({ role: 'assistant', content: fr || null, tool_calls: tca });
+            for (let c of tca) {
+                let rs;
+                try { rs = await runLocalTool(c); } catch (e) { rs = "Local tool failed: " + e.message; }
+
+                const ic = document.getElementById(`tool-icon-${c.id}`);
+                const box = document.getElementById(`tool-call-${c.id}`);
+                if (ic) { ic.classList.remove('animate-spin', 'text-blue-500'); ic.textContent = 'check_circle'; ic.classList.add('text-gray-400'); }
+                if (box) { box.classList.remove('bg-gray-50', 'border-gray-200'); box.classList.add('bg-gray-100', 'border-gray-100', 'opacity-60', 'grayscale'); }
+
+                pushMessage({ role: 'tool', tool_call_id: c.id, name: c.function.name, content: String(rs).substring(0, 4000) });
+            }
+            sR = true;
+        } else {
+            pushMessage({ role: 'assistant', content: fr || "" });
+            cn.querySelectorAll('pre code').forEach(b => hljs.highlightElement(b));
+            saveHistory();
+        }
+    } catch (err) {
+        if (err.name === 'AbortError') cn.innerHTML += `<br><span class="text-red-500 text-[12px] font-bold">[Stopped by user]</span>`;
+        else cn.innerHTML = `<span class="text-red-500 font-bold">Agent Error: ${err.message}</span>`;
+    } finally {
+        if (!sR) {
+            state.isGenerating = false; els.sendIcon.textContent = 'arrow_upward'; els.sendIcon.classList.remove('text-red-500'); els.chatInput.focus(); updateSendButtonState(); updateCtx();
+            injectCodeButtons(els.chatContainer);
+
+            const msgs = getMessages();
+            if (msgs.length > 0 && msgs[msgs.length - 1].role === 'assistant') { showNotification('Ventarys IDX', 'Agent finished the requested task.'); }
+        }
+    }
+    if (sR) await handleSendOrStop(true);
+}
+
+document.addEventListener('DOMContentLoaded', init);
