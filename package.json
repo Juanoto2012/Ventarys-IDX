@@ -1,0 +1,41 @@
+{
+    "name": "ventarys-idx",
+    "version": "1.0.0",
+    "description": "Ventarys IDX - Agente Inteligente de Código",
+    "main": "main.js",
+    "scripts": {
+        "start": "electron .",
+        "build:win": "electron-builder --win nsis"
+    },
+    "keywords": [
+        "ai",
+        "codex",
+        "agent",
+        "electron"
+    ],
+    "author": "Ventarys",
+    "license": "MIT",
+    "devDependencies": {
+        "electron": "^29.1.0",
+        "electron-builder": "^24.13.3"
+    },
+    "build": {
+        "appId": "com.jntx.idx",
+        "productName": "Ventarys IDX",
+        "directories": {
+            "output": "dist"
+        },
+        "win": {
+            "target": [
+                "nsis"
+            ],
+            "icon": "assets/logo.ico"
+        },
+        "nsis": {
+            "oneClick": false,
+            "allowToChangeInstallationDirectory": true,
+            "installerIcon": "assets/logo.ico",
+            "uninstallerIcon": "assets/logo.ico"
+        }
+    }
+}
