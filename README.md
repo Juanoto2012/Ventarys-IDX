@@ -23,5 +23,4 @@ The auto-updater is explicitly tailored for standalone, portable `.exe` deployme
 ### Local Installation
 1. Clone the repository:
    ```bash
-   git clone [https://github.com/Juanoto2012/Ventarys-IDX.git](https://github.com/Juanoto2012/Ventarys-IDX.git)
- ```
+   git clone [https://github.com/Juanoto2012/Ventarys-IDX.git](https://github.com/Juanoto2012/Ventarys-IDX.git) ```
