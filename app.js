@@ -403,6 +403,93 @@ let filteredFileTree = [];
 // Progress tracking
 let folderLoadProgress = { current: 0, total: 0, cancelled: false };
 
+// --- AI CONSOLE TERMINAL SYSTEM ---
+let aiConsoleTerm = null, aiConsolePty = null;
+let aiConsoleVisible = false;
+
+function initAIConsole() {
+    if (!isElectron) {
+        console.log('AI Console disabled in web mode');
+        return;
+    }
+    try {
+        aiConsoleTerm = new Terminal({
+            theme: { background: '#1e1e1e', foreground: '#d4d4d4', cursor: '#58a6ff', cursorAccent: '#fff', selection: '#444' },
+            fontFamily: 'Consolas, Courier New, monospace',
+            fontSize: 12,
+            cursorBlink: true,
+            convertEol: true
+        });
+        aiConsoleTerm.fitAddon = new FitAddon.FitAddon();
+        aiConsoleTerm.loadAddon(aiConsoleTerm.fitAddon);
+        aiConsoleTerm.open(document.getElementById('ai-console-container'));
+
+        const shell = os.platform() === 'win32' ? 'powershell.exe' : 'bash';
+        aiConsolePty = spawn(shell, [], {
+            cwd: currentFolderPath || os.homedir(),
+            env: process.env,
+            shell: true
+        });
+
+        aiConsolePty.stdout.on('data', d => aiConsoleTerm.write(d.toString()));
+        aiConsolePty.stderr.on('data', d => aiConsoleTerm.write(d.toString()));
+        aiConsoleTerm.onData(d => aiConsolePty.stdin.write(d));
+
+        aiConsoleTerm.write(`\x1b[34m[AI Console - Autonomous Agent Terminal]\x1b[0m\r\n`);
+        aiConsoleTerm.write(`\x1b[33mThis terminal is monitored by the AI agent for debugging and execution.\x1b[0m\r\n`);
+        aiConsoleTerm.write(`\x1b[32mAll AI tool outputs are logged here in real-time.\x1b[0m\r\n\n`);
+
+        // Log AI tool invocations to this terminal
+        addOutputLine(`🖥️ AI Console initialized`, 'system');
+    } catch (e) {
+        console.error('Failed to initialize AI Console:', e);
+    }
+}
+
+function refreshAIConsole() {
+    if (aiConsoleTerm && aiConsoleTerm.fitAddon) {
+        aiConsoleTerm.fitAddon.fit();
+    }
+}
+
+// --- MARKDOWN PANEL SYSTEM ---
+let markdownPanelVisible = false;
+
+function toggleMarkdownPanel() {
+    const panel = document.getElementById('panel-markdown');
+    if (!panel) return;
+
+    markdownPanelVisible = !markdownPanelVisible;
+    panel.style.display = markdownPanelVisible ? 'flex' : 'none';
+
+    if (markdownPanelVisible) {
+        updateMarkdownPanel();
+        setTimeout(() => {
+            if (markdownFitAddon && markdownFitAddon.terminal) {
+                markdownFitAddon.terminal.fitAddon?.fit();
+            }
+        }, 50);
+    }
+}
+
+function updateMarkdownPanel() {
+    const content = document.getElementById('markdown-panel-content');
+    if (!content) return;
+
+    if (activeFilePath) {
+        const f = openFiles.find(x => x.path === activeFilePath);
+        if (f && f.content) {
+            try {
+                content.innerHTML = DOMPurify.sanitize(marked.parse(f.content));
+            } catch (e) {
+                content.textContent = f.content;
+            }
+        }
+    } else {
+        content.innerHTML = '<div class="text-[#8b949e] text-xs italic p-4">No file open. Open a markdown file to preview.</div>';
+    }
+}
+
 // --- OUTPUT PANEL / AI CONSOLE SYSTEM ---
 let outputPanelVisible = false;
 let outputLines = [];
@@ -415,6 +502,9 @@ function toggleOutputPanel() {
         panel.style.display = outputPanelVisible ? 'flex' : 'none';
         if (outputPanelVisible && term) {
             setTimeout(() => term.fitAddon.fit(), 50);
+        }
+        if (aiConsoleTerm) {
+            setTimeout(() => refreshAIConsole(), 50);
         }
     }
 }
@@ -578,6 +668,133 @@ function hideChangeBanner() {
     activeChangeBanner = null;
 }
 
+// --- QUICK OPEN FILE DIALOG (Ctrl+P) ---
+let quickOpenOverlay = null;
+
+function showQuickOpen() {
+    if (quickOpenOverlay) return;
+
+    quickOpenOverlay = document.createElement('div');
+    quickOpenOverlay.className = 'fixed inset-0 bg-black/70 z-[100] flex items-start justify-center pt-[20vh] backdrop-blur-sm';
+    quickOpenOverlay.innerHTML = `
+        <div class="w-full max-w-xl bg-[#161b22] border border-[#30363d] rounded-xl shadow-2xl overflow-hidden transform transition-all">
+            <div class="flex items-center gap-3 px-4 py-3 border-b border-[#30363d]">
+                <span class="material-symbols-rounded text-[18px] text-[#8b949e]">find_in_page</span>
+                <input type="text" id="quick-open-input" placeholder="Type to search files..."
+                    class="flex-1 bg-transparent text-[#e6edf3] text-[14px] outline-none placeholder-[#484f58]">
+                <kbd class="text-[10px] text-[#484f58] bg-[#0d1117] px-2 py-1 rounded border border-[#30363d]">ESC</kbd>
+            </div>
+            <div id="quick-open-results" class="max-h-[300px] overflow-y-auto p-2"></div>
+            <div class="px-4 py-2 bg-[#1c2128] border-t border-[#30363d] text-[10px] text-[#484f58] flex justify-between">
+                <span><kbd class="bg-[#0d1117] px-1.5 py-0.5 rounded border border-[#30363d]">↑↓</kbd> Navigate</span>
+                <span><kbd class="bg-[#0d1117] px-1.5 py-0.5 rounded border border-[#30363d]">Enter</kbd> Open</span>
+                <span><kbd class="bg-[#0d1117] px-1.5 py-0.5 rounded border border-[#30363d]">ESC</kbd> Close</span>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(quickOpenOverlay);
+
+    const input = quickOpenOverlay.querySelector('#quick-open-input');
+    input.focus();
+
+    // Build file index for quick search
+    let quickOpenFiles = [];
+    if (currentFolderPath && isElectron) {
+        buildQuickOpenIndex(currentFolderPath, quickOpenFiles, 0);
+    }
+
+    // Search on input
+    input.addEventListener('input', () => {
+        const query = input.value.toLowerCase().trim();
+        const resultsDiv = quickOpenOverlay.querySelector('#quick-open-results');
+        if (!query) {
+            resultsDiv.innerHTML = '<div class="p-3 text-center text-[#8b949e] text-xs">Start typing to search...</div>';
+            return;
+        }
+        const matches = quickOpenFiles.filter(f => f.toLowerCase().includes(query)).slice(0, 20);
+        resultsDiv.innerHTML = matches.map((f, i) => `
+            <div class="quick-open-item px-3 py-2 rounded-lg cursor-pointer text-[12px] text-[#e6edf3] hover:bg-[#21262d] transition ${i === 0 ? 'bg-[#21262d]' : ''}" data-path="${f}">
+                <span class="material-symbols-rounded text-[14px] text-[#8b949e] mr-2">description</span>
+                ${f.split('/').pop()}
+                <span class="text-[10px] text-[#484f58] ml-2">${f.split('/').slice(0, -1).join('/') || '.'}</span>
+            </div>
+        `).join('');
+
+        resultsDiv.querySelectorAll('.quick-open-item').forEach(item => {
+            item.addEventListener('click', () => {
+                openFile(item.dataset.path);
+                closeQuickOpen();
+            });
+            item.addEventListener('mouseenter', () => {
+                resultsDiv.querySelectorAll('.quick-open-item').forEach(i => i.classList.remove('bg-[#21262d]'));
+                item.classList.add('bg-[#21262d]');
+            });
+        });
+    });
+
+    // Keyboard navigation
+    let selectedIndex = 0;
+    input.addEventListener('keydown', (e) => {
+        const items = quickOpenOverlay.querySelectorAll('.quick-open-item');
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            items.forEach(i => i.classList.remove('bg-[#21262d]'));
+            selectedIndex = Math.min(selectedIndex + 1, items.length - 1);
+            if (selectedIndex >= 0 && items[selectedIndex]) {
+                items[selectedIndex].classList.add('bg-[#21262d]');
+                items[selectedIndex].scrollIntoView({ block: 'nearest' });
+            }
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            items.forEach(i => i.classList.remove('bg-[#21262d]'));
+            selectedIndex = Math.max(selectedIndex - 1, 0);
+            if (selectedIndex >= 0 && items[selectedIndex]) {
+                items[selectedIndex].classList.add('bg-[#21262d]');
+                items[selectedIndex].scrollIntoView({ block: 'nearest' });
+            }
+        } else if (e.key === 'Enter') {
+            e.preventDefault();
+            const selected = quickOpenOverlay.querySelector('.quick-open-item.bg-\\[\\#21262d\\]');
+            if (selected) {
+                openFile(selected.dataset.path);
+                closeQuickOpen();
+            }
+        } else if (e.key === 'Escape') {
+            e.preventDefault();
+            closeQuickOpen();
+        }
+    });
+
+    // Click outside to close
+    quickOpenOverlay.addEventListener('click', (e) => {
+        if (e.target === quickOpenOverlay) closeQuickOpen();
+    });
+}
+
+function closeQuickOpen() {
+    if (quickOpenOverlay) {
+        quickOpenOverlay.remove();
+        quickOpenOverlay = null;
+    }
+}
+
+function buildQuickOpenIndex(dir, files, depth) {
+    if (depth > 10 || !fs.existsSync(dir)) return;
+    try {
+        const entries = fs.readdirSync(dir, { withFileTypes: true });
+        entries.forEach(entry => {
+            if (shouldExclude(entry.name, entry.isDirectory())) return;
+            const fullPath = path.join(dir, entry.name);
+            if (entry.isFile()) {
+                files.push(fullPath);
+            } else if (entry.isDirectory()) {
+                buildQuickOpenIndex(fullPath, files, depth + 1);
+            }
+        });
+    } catch (e) { /* ignore */ }
+}
+
 // Setup accept/reject button handlers
 function setupChangeButtons() {
     const acceptBtn = document.getElementById('btn-accept-change');
@@ -609,49 +826,133 @@ function loadAgentConfig() {
     if (lo) lo.checked = LOG_AI_OUTPUT;
 }
 
-// --- AUTO RETRY API FETCH ---
+// --- ENHANCED AUTO RETRY API FETCH WITH TIMEOUT ---
+const DEFAULT_API_TIMEOUT = 60000; // 60 second timeout
+let currentRetryCount = 0;
+let maxConcurrentRetries = 3;
+
+async function fetchWithTimeout(url, options, timeout = DEFAULT_API_TIMEOUT) {
+    const { signal, abort } = createAbortSignal(timeout);
+    try {
+        const response = await fetch(url, { ...options, signal });
+        abort.clear();
+        return response;
+    } catch (error) {
+        abort.clear();
+        if (error.name === 'AbortError') {
+            throw new Error(`API timeout after ${timeout / 1000}s`);
+        }
+        throw error;
+    }
+}
+
+function createAbortSignal(timeout) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeout);
+    return {
+        signal: controller.signal,
+        abort: {
+            clear: () => clearTimeout(timer)
+        }
+    };
+}
+
 async function fetchWithRetry(url, options, maxRetries = MAX_RETRIES) {
     let lastError;
+    let lastStatusCode = null;
     addOutputLine(`🌐 API Request: ${url.substring(0, 80)}...`, 'system');
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
         try {
             // Show retry indicator if not first attempt
             if (attempt > 0) {
+                currentRetryCount = attempt;
                 showRetryIndicator(attempt, maxRetries);
-                addOutputLine(`🔄 Retry attempt ${attempt}/${maxRetries}...`, 'warning');
                 const delay = RETRY_DELAY * Math.pow(2, attempt - 1);
+                addOutputLine(`🔄 Retry ${attempt}/${maxRetries} - waiting ${delay}ms (exponential backoff)...`, 'warning');
+
+                // Update retry text with delay info
+                const retryText = document.getElementById('retry-text');
+                if (retryText) {
+                    retryText.textContent = `Retrying... (${attempt}/${maxRetries}) - ${delay}ms`;
+                }
+
                 await new Promise(resolve => setTimeout(resolve, delay));
             }
 
-            const response = await fetch(url, options);
+            const response = await fetchWithTimeout(url, options);
 
             // Check for error status
             if (!response.ok) {
+                lastStatusCode = response.status;
+
+                // Don't retry on 4xx client errors (except 429 rate limit)
+                if (response.status >= 400 && response.status < 500 && response.status !== 429) {
+                    addOutputLine(`✗ HTTP ${response.status} - No retry for client errors`, 'error');
+                    hideRetryIndicator();
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+
+                // Retry on 429 (rate limit) and 5xx (server errors)
+                if (response.status === 429) {
+                    const retryAfter = response.headers.get('Retry-After') || RETRY_DELAY;
+                    addOutputLine(`⏰ Rate limited (429) - waiting ${retryAfter}ms before retry`, 'warning');
+                    throw new Error(`Rate limited: HTTP ${response.status}`);
+                }
+
+                if (response.status >= 500) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+
                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
             }
 
             // Hide retry indicator on success
+            currentRetryCount = 0;
             hideRetryIndicator();
-            addOutputLine(`✓ API request successful`, 'success');
+            if (attempt > 0) {
+                addOutputLine(`✓ Retry succeeded on attempt ${attempt + 1}!`, 'success');
+            } else {
+                addOutputLine(`✓ API request successful (attempt 1)`, 'success');
+            }
             return response;
         } catch (error) {
             lastError = error;
             console.warn(`API Request failed (attempt ${attempt + 1}/${maxRetries + 1}):`, error.message);
-            addOutputLine(`✗ Request failed (${attempt + 1}/${maxRetries + 1}): ${error.message}`, 'error');
+            addOutputLine(`✗ Attempt ${attempt + 1}/${maxRetries + 1}: ${error.message}`, 'error');
 
             // Don't retry on abort
             if (error.name === 'AbortError') {
                 addOutputLine(`⛔ Request aborted by user`, 'warning');
                 throw error;
             }
+
+            // Don't retry on auth errors
+            if (error.message.includes('401') || error.message.includes('403')) {
+                addOutputLine(`🔑 Authentication error - not retrying`, 'warning');
+                throw error;
+            }
         }
     }
 
     // All retries exhausted
+    currentRetryCount = 0;
     hideRetryIndicator();
-    addOutputLine(`✗ All retries exhausted. Request failed.`, 'error');
-    throw new Error(`API request failed after ${maxRetries + 1} attempts: ${lastError.message}`);
+    addOutputLine(`✗ All ${maxRetries + 1} attempts exhausted. Last error: ${lastError?.message}`, 'error');
+
+    // Try one final time with extended timeout as a last resort
+    try {
+        addOutputLine(`🆘 Final emergency retry with extended timeout...`, 'warning');
+        const response = await fetchWithTimeout(url, options, DEFAULT_API_TIMEOUT * 3);
+        if (response.ok) {
+            addOutputLine(`✓ Emergency retry succeeded!`, 'success');
+            return response;
+        }
+    } catch (e) {
+        addOutputLine(`✗ Emergency retry also failed: ${e.message}`, 'error');
+    }
+
+    throw new Error(`API request failed after ${maxRetries + 1} attempts + emergency retry: ${lastError?.message}`);
 }
 
 function showRetryIndicator(attempt, max) {
@@ -948,6 +1249,7 @@ document.getElementById('btn-vscode').onclick = () => { if (isElectron && curren
 
 function init() {
     initTerminal();
+    initAIConsole();
     editor = ace.edit("file-editor");
     editor.setTheme("ace/theme/github_dark");
     editor.setOptions({ fontFamily: "Consolas, monospace", fontSize: "14px", showPrintMargin: false, enableBasicAutocompletion: true, enableLiveAutocompletion: true });
@@ -1341,6 +1643,32 @@ function init() {
         toggleOutputPanel();
     };
 
+    // AI Console panel handlers
+    document.getElementById('btn-ai-console-clear').onclick = () => {
+        if (aiConsoleTerm) aiConsoleTerm.clear();
+    };
+    document.getElementById('btn-ai-console-close').onclick = () => {
+        aiConsoleVisible = !aiConsoleVisible;
+        document.getElementById('panel-ai-console').style.display = aiConsoleVisible ? 'flex' : 'none';
+    };
+
+    // Markdown panel handlers
+    document.getElementById('btn-markdown-refresh').onclick = () => {
+        updateMarkdownPanel();
+    };
+    document.getElementById('btn-markdown-close').onclick = () => {
+        markdownPanelVisible = !markdownPanelVisible;
+        document.getElementById('panel-markdown').style.display = markdownPanelVisible ? 'flex' : 'none';
+    };
+
+    // Quick file search (Ctrl+P)
+    document.addEventListener('keydown', (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key === 'p' && !e.shiftKey) {
+            e.preventDefault();
+            showQuickOpen();
+        }
+    });
+
     // Tools menu handlers
     document.getElementById('menu-run-code').onclick = () => {
         if (!activeFilePath) {
@@ -1465,7 +1793,28 @@ function init() {
 
     // AI menu handlers
     document.getElementById('menu-agent-config').onclick = () => {
-        showNotification('Agent Config', 'Configure agent behavior in Settings');
+        document.getElementById('agent-config-modal').classList.remove('hidden');
+    };
+
+    document.getElementById('menu-toggle-ai-console').onclick = () => {
+        const panel = document.getElementById('panel-ai-console');
+        if (panel) {
+            aiConsoleVisible = !aiConsoleVisible;
+            panel.style.display = aiConsoleVisible ? 'flex' : 'none';
+            if (aiConsoleVisible && aiConsoleTerm) {
+                setTimeout(() => refreshAIConsole(), 50);
+            }
+        }
+    };
+
+    document.getElementById('menu-toggle-markdown-panel').onclick = () => {
+        toggleMarkdownPanel();
+    };
+
+    document.getElementById('menu-toggle-file-search').onclick = () => {
+        switchTab('search', document.getElementById('tab-search'));
+        const searchInput = document.getElementById('search-input');
+        if (searchInput) searchInput.focus();
     };
 
     document.getElementById('menu-clear-context').onclick = () => {
@@ -1628,9 +1977,24 @@ function handleFolderSelect(e) {
         setTimeout(() => loadFolderTreeOptimized(currentFolderPath, u, 0), 50);
 
         if (ptyProcess) {
-            ptyProcess.stdin.write(`cd "${currentFolderPath}"\r\nclear\r\n`);
+            // Auto CD into the opened folder
+            const escapedPath = currentFolderPath.replace(/"/g, '\\"');
+            const cdCommand = os.platform() === 'win32'
+                ? `cd "${escapedPath}"\r\n`
+                : `cd '${escapedPath}'\r\n`;
+            ptyProcess.stdin.write(cdCommand);
+            ptyProcess.stdin.write('clear\r\n');
             setTimeout(() => term.scrollToBottom(), 100);
+            addOutputLine(`📂 Auto-CD to: ${currentFolderPath}`, 'system');
         }
+
+        // Update ptyProcess cwd for future tool calls
+        try {
+            if (isElectron && ptyProcess) {
+                // Kill old process and spawn new one with correct cwd
+                ptyProcess.kill();
+            }
+        } catch (e) { /* ignore */ }
     }
 }
 
@@ -1782,11 +2146,14 @@ async function fetchModels(se = true) {
     els.modelSelect.innerHTML = '<option value="">Loading Models...</option>';
     let am = [];
 
-    // Fetch from built-in providers
+    // Fetch from built-in providers (try all, even without keys for local providers)
     const ff = async (pk, ks) => {
-        if (!ks) return;
         try {
-            const r = await fetch(`${providers[pk].url}/models`, { headers: { 'Authorization': `Bearer ${ks}` } });
+            const headers = { 'Content-Type': 'application/json' };
+            if (ks) {
+                headers['Authorization'] = `Bearer ${ks}`;
+            }
+            const r = await fetch(`${providers[pk].url}/models`, { headers });
             if (r.ok) {
                 const d = await r.json();
                 (d.data || []).forEach(m => {
@@ -1798,12 +2165,16 @@ async function fetchModels(se = true) {
                     }
                     am.push({ id: m.id, provider: pk, label: `[${providers[pk].name}] ${m.id}` });
                 });
+            } else {
+                console.warn(`Provider ${providers[pk].name} returned HTTP ${r.status}`);
             }
-        } catch (e) { }
+        } catch (e) {
+            console.warn(`Failed to fetch from ${providers[pk].name}:`, e.message);
+        }
     };
     await Promise.all([ff('agnes', k.agnes), ff('aqua', k.aqua)]);
 
-    // Fetch from custom providers
+    // Fetch from custom providers (including local ones like Ollama)
     for (let i = 0; i < customProviders.length; i++) {
         const cp = customProviders[i];
         try {
@@ -1818,8 +2189,12 @@ async function fetchModels(se = true) {
                     if (m.id.toLowerCase().includes('video')) return;
                     am.push({ id: m.id, provider: `custom_${i}`, label: `[${cp.name}] ${m.id}` });
                 });
+            } else {
+                console.warn(`Custom provider ${cp.name} returned HTTP ${r.status}`);
             }
-        } catch (e) { console.warn(`Failed to fetch from ${cp.name}:`, e); }
+        } catch (e) {
+            console.warn(`Failed to fetch from ${cp.name}:`, e.message);
+        }
     }
 
     els.modelSelect.innerHTML = '';
@@ -1912,13 +2287,14 @@ async function runLocalTool(c) {
 
     // Log tool invocation
     addOutputLine(`🔧 Tool called: ${n}`, 'ai');
+    addOutputLine(`   Working directory: ${cwd}`, 'system');
     addOutputLine(`   Args: ${JSON.stringify(a).substring(0, 150)}`, 'system');
 
     if (n === 'execute_terminal') {
         addOutputLine(`⌘ Executing terminal command: ${a.command}`, 'info');
         if (term && ptyProcess) { ptyProcess.stdin.write(`${a.command}\r\n`); term.focus(); }
         return new Promise(res => {
-            cpModule.exec(a.command, { cwd }, (err, out, stde) => {
+            cpModule.exec(a.command, { cwd: currentFolderPath || os.homedir() }, (err, out, stde) => {
                 const result = out || stde || "Command executed.";
                 addOutputLine(`✓ Command completed successfully`, 'success');
                 if (out) addOutputLine(`   Output: ${out.substring(0, 200)}`, 'system');

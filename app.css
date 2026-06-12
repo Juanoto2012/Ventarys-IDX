@@ -9,8 +9,8 @@
     --text-secondary: #c9d1d9;
     --border: #30363d;
     --border-light: #21262d;
-    --accent: #58a6ff;
-    --accent-hover: #79b8ff;
+    --accent: #ffffff;
+    --accent-hover: #dddddd;
     --success: #3fb950;
     --error: #f85149;
     --warning: #d29922;
@@ -130,6 +130,7 @@ body {
     padding: 12px;
     margin: 8px 0;
     overflow-x: auto;
+    position: relative;
 }
 
 .markdown-body pre code {
@@ -319,8 +320,6 @@ body {
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    padding: 4px 10px;
-    background-color: rgba(210, 153, 34, 0.15);
     border: 1px solid var(--warning);
     border-radius: 6px;
     color: var(--warning);
@@ -1012,4 +1011,201 @@ input[type="checkbox"].accent-blue-500 {
 
 #docs-modal>div {
     background-color: var(--bg-surface);
+}
+
+/* Quick Open Dialog Dark Theme */
+.dark #quick-open-input {
+    background-color: transparent;
+    color: var(--text-main);
+}
+
+.dark #quick-open-input::placeholder {
+    color: var(--text-muted);
+}
+
+.dark .quick-open-item {
+    background-color: transparent;
+    color: var(--text-secondary);
+}
+
+.dark .quick-open-item:hover,
+.dark .quick-open-item-bg {
+    background-color: var(--bg-hover) !important;
+    color: var(--text-main);
+}
+
+/* AI Console Panel Dark Theme */
+.dark #panel-ai-console {
+    background-color: var(--bg-surface);
+    border-color: var(--border);
+}
+
+.dark #ai-console-container {
+    background-color: #161b22;
+}
+
+/* Markdown Panel Dark Theme */
+.dark #panel-markdown {
+    background-color: var(--bg-surface);
+    border-color: var(--border);
+}
+
+.dark #markdown-panel-content {
+    background-color: #161b22;
+    color: var(--text-main);
+}
+
+/* Quick Open Overlay Dark Theme */
+.dark .quick-open-overlay {
+    background-color: rgba(0, 0, 0, 0.7);
+}
+
+/* File tree item dark theme */
+.dark .file-tree-item {
+    color: var(--text-secondary);
+}
+
+/* Output panel dark theme improvements */
+.dark #output-content .output-line.info {
+    color: #58a6ff;
+}
+
+.dark #output-content .output-line.success {
+    color: #3fb950;
+}
+
+.dark #output-content .output-line.error {
+    color: #f85149;
+}
+
+.dark #output-content .output-line.warning {
+    color: #d29922;
+}
+
+.dark #output-content .output-line.system {
+    color: #8b949e;
+    font-style: italic;
+}
+
+.dark #output-content .output-line.ai {
+    color: #a371f7;
+}
+
+/* Quick file search results dark theme */
+.dark #quick-open-results {
+    background-color: var(--bg-surface);
+}
+
+/* Quick open keyboard hints */
+.dark kbd {
+    background-color: #0d1117;
+    border-color: #30363d;
+    color: #484f58;
+}
+
+/* Enhanced terminal dark theme */
+.dark #terminal-container {
+    background-color: #161b22;
+}
+
+/* Panel header dark theme */
+.dark .border-b>div {
+    background-color: #1c2128;
+}
+
+/* Panel body dark theme */
+.dark .flex-1.overflow-hidden {
+    background-color: #161b22;
+}
+
+/* Tab active indicator dark theme */
+.dark .tab-active {
+    color: #e6edf3 !important;
+    border-bottom-color: #58a6ff !important;
+    font-weight: 600;
+}
+
+/* Tab inactive hover dark theme */
+.dark .tab-inactive:hover {
+    color: #e6edf3 !important;
+}
+
+/* File toggle hover dark theme */
+.dark .file-toggle:hover {
+    background-color: var(--bg-hover);
+}
+
+/* Folder toggle dark theme */
+.dark .folder-toggle:hover {
+    background-color: var(--bg-hover);
+}
+
+/* Quick open results empty state */
+.dark .quick-open-empty {
+    color: var(--text-muted);
+}
+
+/* Quick open footer dark theme */
+.dark .quick-open-footer {
+    background-color: #1c2128;
+    border-color: #30363d;
+}
+
+/* Enhanced dropdown menu dark theme */
+.dark .relative.group>div {
+    background-color: #161b22;
+    border-color: #30363d;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+}
+
+.dark .relative.group>div button {
+    color: #c9d1d9;
+}
+
+.dark .relative.group>div button:hover {
+    background-color: #21262d;
+    color: #e6edf3;
+}
+
+/* Divider dark theme */
+.dark .divider-separator {
+    background-color: #21262d;
+}
+
+/* Panel resize handle dark theme */
+.dark .resizer-x,
+.dark .resizer-y {
+    border-color: #30363d;
+}
+
+/* Scrollbar dark theme for panels */
+.dark #ai-console-container::-webkit-scrollbar,
+.dark #markdown-panel-content::-webkit-scrollbar,
+.dark #output-content::-webkit-scrollbar {
+    background-color: #161b22;
+}
+
+/* Quick open selected item highlight */
+.quick-open-item.selected {
+    background-color: #21262d !important;
+}
+
+/* File search input focus dark theme */
+.dark #search-input:focus {
+    border-color: #58a6ff;
+    box-shadow: 0 0 0 1px #58a6ff;
+}
+
+/* Git status dark theme */
+.dark #git-status {
+    background-color: #0d1117;
+}
+
+/* Git branch item dark theme */
+.dark .git-branch-item {
+    color: #8b949e;
+}
+
+.dark .git-branch-item:hover {
+    background-color: #21262d;
 }

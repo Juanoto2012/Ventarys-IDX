@@ -360,6 +360,19 @@
                         class="w-full text-left px-4 py-2 hover:bg-[#21262d] flex items-center gap-3 text-[#c9d1d9]">
                         <span class="material-symbols-rounded text-[16px]">vertical_align_center</span> Sticky Scroll
                     </button>
+                    <div class="h-[1px] bg-[#21262d] my-1"></div>
+                    <button id="menu-toggle-output"
+                        class="w-full text-left px-4 py-2 hover:bg-[#21262d] flex items-center gap-3 text-[#c9d1d9]">
+                        <span class="material-symbols-rounded text-[16px]">console</span> Toggle Output Panel
+                    </button>
+                    <button id="menu-toggle-markdown-preview"
+                        class="w-full text-left px-4 py-2 hover:bg-[#21262d] flex items-center gap-3 text-[#c9d1d9]">
+                        <span class="material-symbols-rounded text-[16px]">article</span> Markdown Preview Panel
+                    </button>
+                    <button id="menu-toggle-file-search"
+                        class="w-full text-left px-4 py-2 hover:bg-[#21262d] flex items-center gap-3 text-[#c9d1d9]">
+                        <span class="material-symbols-rounded text-[16px]">find_in_page</span> Quick File Search
+                    </button>
                 </div>
             </div>
             <!-- AI Menu -->
@@ -408,6 +421,15 @@
                     <button id="menu-clear-output"
                         class="w-full text-left px-4 py-2 hover:bg-[#21262d] flex items-center gap-3 text-[#c9d1d9]">
                         <span class="material-symbols-rounded text-[16px]">clear_all</span> Clear Output
+                    </button>
+                    <div class="h-[1px] bg-[#21262d] my-1"></div>
+                    <button id="menu-toggle-ai-console"
+                        class="w-full text-left px-4 py-2 hover:bg-[#21262d] flex items-center gap-3 text-[#c9d1d9]">
+                        <span class="material-symbols-rounded text-[16px]">smart_toy</span> Toggle AI Console
+                    </button>
+                    <button id="menu-toggle-markdown-panel"
+                        class="w-full text-left px-4 py-2 hover:bg-[#21262d] flex items-center gap-3 text-[#c9d1d9]">
+                        <span class="material-symbols-rounded text-[16px]">article</span> Toggle Markdown Panel
                     </button>
                 </div>
             </div>
@@ -651,6 +673,40 @@
                 <div id="output-container" class="flex-1 p-3 overflow-hidden bg-[#161b22] font-mono text-[12px]">
                     <div id="output-content" class="h-full overflow-y-auto space-y-1"></div>
                 </div>
+            </div>
+
+            <!-- AI Console Panel (Separate Terminal for AI Commands) -->
+            <div id="panel-ai-console"
+                class="hidden h-48 bg-[#161b22] flex flex-col shrink-0 flex-none relative border-t border-[#30363d]">
+                <div class="h-8 border-b border-[#30363d] bg-[#1c2128] flex items-center px-4 justify-between">
+                    <div class="flex items-center gap-2 text-[11px] font-bold text-[#58a6ff] uppercase tracking-widest">
+                        <span class="material-symbols-rounded text-[14px]">smart_toy</span> AI Console
+                    </div>
+                    <div class="flex gap-3">
+                        <button id="btn-ai-console-clear" class="text-[#8b949e] hover:text-[#e6edf3] transition"
+                            title="Clear"><span class="material-symbols-rounded text-[16px]">clear_all</span></button>
+                        <button id="btn-ai-console-close" class="text-[#8b949e] hover:text-[#e6edf3] transition"
+                            title="Close"><span class="material-symbols-rounded text-[16px]">close</span></button>
+                    </div>
+                </div>
+                <div id="ai-console-container" class="flex-1 p-2 overflow-hidden bg-[#161b22]"></div>
+            </div>
+
+            <!-- Markdown Preview Panel (Dockable) -->
+            <div id="panel-markdown"
+                class="hidden h-48 bg-[#161b22] flex flex-col shrink-0 flex-none relative border-t border-[#30363d]">
+                <div class="h-8 border-b border-[#30363d] bg-[#1c2128] flex items-center px-4 justify-between">
+                    <div class="flex items-center gap-2 text-[11px] font-bold text-[#3fb950] uppercase tracking-widest">
+                        <span class="material-symbols-rounded text-[14px]">article</span> Markdown Preview
+                    </div>
+                    <div class="flex gap-3">
+                        <button id="btn-markdown-refresh" class="text-[#8b949e] hover:text-[#e6edf3] transition"
+                            title="Refresh"><span class="material-symbols-rounded text-[16px]">refresh</span></button>
+                        <button id="btn-markdown-close" class="text-[#8b949e] hover:text-[#e6edf3] transition"
+                            title="Close"><span class="material-symbols-rounded text-[16px]">close</span></button>
+                    </div>
+                </div>
+                <div id="markdown-panel-content" class="flex-1 p-4 overflow-y-auto bg-[#161b22] markdown-body"></div>
             </div>
         </main>
 
