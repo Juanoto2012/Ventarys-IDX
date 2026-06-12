@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="dark">
 
 <head>
     <meta charset="UTF-8">
@@ -22,194 +22,456 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.6/ace.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.6/ext-language_tools.min.js"></script>
     <!-- Puter Cloud Storage -->
-    <script src="puter.js"></script>
+    <script src="https://js.puter.com/v2/"></script>
 </head>
 
-<body class="flex flex-col h-screen overflow-hidden text-sm">
+<body class="flex flex-col h-screen overflow-hidden text-sm bg-[#0d1117] text-[#e6edf3]">
     <div id="off-scr"
-        class="fixed inset-0 bg-white z-[9999] flex flex-col items-center justify-center text-gray-800 hidden">
-        <svg class="w-24 h-24 mb-5 text-gray-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-            stroke-linecap="round" stroke-linejoin="round">
+        class="fixed inset-0 bg-[#0d1117] z-[9999] flex flex-col items-center justify-center text-[#e6edf3] hidden">
+        <svg class="w-24 h-24 mb-5 text-[#484f58]" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <line x1="2" y1="2" x2="22" y2="22"></line>
             <path d="M8.5 8.5a5 5 0 0 1 7 0"></path>
             <path d="M12 14l.01 0"></path>
             <path d="M5.64 5.64a9 9 0 0 1 12.72 0"></path>
         </svg>
         <h1 class="text-3xl font-bold mb-2">Offline</h1>
-        <p class="text-gray-500 text-sm font-medium">Reconnecting to the internet to load dependencies (CDN)...</p>
+        <p class="text-[#8b949e] text-sm font-medium">Reconnecting to the internet to load dependencies (CDN)...</p>
     </div>
 
-    <header class="drag-region flex flex-col shrink-0 select-none z-30 bg-white border-b border-[#e0e0e0] shadow-sm">
+    <!-- Change Notification Banner -->
+    <div id="change-banner" class="hidden fixed top-14 left-1/2 transform -translate-x-1/2 z-50 change-notification">
+        <div
+            class="bg-[#161b22] border border-[#30363d] rounded-xl shadow-2xl px-5 py-3 flex items-center gap-4 max-w-lg">
+            <span class="material-symbols-rounded text-[#58a6ff] text-[20px]">edit_note</span>
+            <div class="flex-1">
+                <p class="text-[13px] font-semibold text-[#e6edf3]" id="change-banner-text">AI detected file changes</p>
+                <p class="text-[11px] text-[#8b949e]" id="change-banner-file">filename.js</p>
+            </div>
+            <div class="flex items-center gap-2">
+                <button id="btn-reject-change"
+                    class="btn-reject text-[11px] px-3 py-1.5 rounded-lg font-bold transition flex items-center gap-1 bg-[#f85149] hover:opacity-80 text-white">
+                    <span class="material-symbols-rounded text-[14px]">close</span> Reject
+                </button>
+                <button id="btn-accept-change"
+                    class="btn-accept text-[11px] px-3 py-1.5 rounded-lg font-bold transition flex items-center gap-1 bg-[#3fb950] hover:opacity-80 text-white">
+                    <span class="material-symbols-rounded text-[14px]">check</span> Accept
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Retry Indicator -->
+    <div id="retry-indicator" class="hidden fixed bottom-20 left-1/2 transform -translate-x-1/2 z-50 retry-indicator">
+        <div class="spinner"></div>
+        <span id="retry-text">Retrying... (1/5)</span>
+    </div>
+
+    <!-- Markdown Preview Modal -->
+    <div id="markdown-preview-modal"
+        class="hidden fixed inset-0 bg-black/70 z-50 flex items-center justify-center backdrop-blur-sm">
+        <div
+            class="bg-[#161b22] rounded-2xl shadow-2xl w-full max-w-4xl h-[80vh] overflow-hidden flex flex-col transform transition-all border border-[#30363d]">
+            <div class="p-4 border-b border-[#30363d] flex justify-between items-center bg-[#161b22]">
+                <h2 class="text-base font-bold text-[#e6edf3] flex items-center gap-2">
+                    <span class="material-symbols-rounded text-[#58a6ff]">article</span> Markdown Preview
+                </h2>
+                <button id="btn-close-markdown-preview"
+                    class="text-[#8b949e] hover:text-[#e6edf3] bg-[#21262d] hover:bg-[#30363d] p-1 rounded-full transition">
+                    <span class="material-symbols-rounded text-[18px]">close</span>
+                </button>
+            </div>
+            <div id="markdown-preview-content" class="flex-1 overflow-y-auto p-6 markdown-body"></div>
+        </div>
+    </div>
+
+    <!-- About Modal -->
+    <div id="about-modal"
+        class="hidden fixed inset-0 bg-black/70 z-50 flex items-center justify-center backdrop-blur-sm">
+        <div
+            class="bg-[#161b22] rounded-2xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col transform transition-all border border-[#30363d]">
+            <div class="p-5 border-b border-[#30363d] flex justify-between items-center bg-[#161b22]">
+                <h2 class="text-base font-bold text-[#e6edf3] flex items-center gap-2">
+                    <span class="material-symbols-rounded text-[#58a6ff]">info</span> About Ventarys IDX
+                </h2>
+                <button id="btn-close-about"
+                    class="text-[#8b949e] hover:text-[#e6edf3] bg-[#21262d] hover:bg-[#30363d] p-1 rounded-full transition">
+                    <span class="material-symbols-rounded text-[18px]">close</span>
+                </button>
+            </div>
+            <div class="p-6 text-center space-y-4">
+                <img src="assets/logo.png" alt="Logo" class="w-16 h-16 mx-auto rounded-lg  brightness-0 invert"
+                    onerror="this.style.display='none'">
+                <h3 class="text-xl font-bold text-[#e6edf3]">Ventarys IDX</h3>
+                <p class="text-[#58a6ff] font-mono text-sm">Version 1.0.1</p>
+                <p class="text-[#8b949e] text-sm">Autonomous AI-Powered IDE</p>
+                <p class="text-[#8b949e] text-xs leading-relaxed">A fully functional IDE with AI capabilities including
+                    auto-retry, auto-reload, markdown preview, terminal access, and more.</p>
+                <div class="h-[1px] bg-[#21262d]"></div>
+                <p class="text-[#8b949e] text-[10px]">Developed by JNTX Studio</p>
+            </div>
+        </div>
+    </div>
+
+    <header
+        class="drag-region flex flex-col shrink-0 select-none z-30 bg-[#161b22] border-b border-[#30363d] shadow-sm">
         <div class="h-10 flex justify-between items-center px-4">
             <div class="flex items-center gap-3">
-                <img src="assets/logo.png" alt="Logo" class="w-5 h-5 rounded shadow-sm object-cover"
+                <img src="assets/logo.png" alt="Logo" class="w-5 h-5 rounded shadow-sm object-cover brightness-0 invert"
                     onerror="this.style.display='none'">
-                <span class="text-[13px] font-bold text-gray-900 tracking-wide">VENTARYS <span
-                        class="text-blue-600">IDX</span></span>
+                <span class="text-[13px] font-bold text-[#e6edf3] tracking-wide">VENTARYS <span
+                        class="text-[#58a6ff]">IDX</span></span>
 
-                <div class="flex items-center gap-2 bg-[#f0f0f0] px-2 py-0.5 rounded-full border border-gray-200/50 shadow-inner ml-2"
+                <div class="flex items-center gap-2 bg-[#21262d] px-2 py-0.5 rounded-full border border-[#30363d] shadow-inner ml-2"
                     title="Context Usage (Real Estimate)">
-                    <div class="w-16 h-1.5 bg-gray-300 rounded-full overflow-hidden flex">
-                        <div id="ctx-progress" class="h-full bg-blue-500 w-0 transition-all duration-300"></div>
+                    <div class="w-16 h-1.5 bg-[#484f58] rounded-full overflow-hidden flex">
+                        <div id="ctx-progress" class="h-full bg-[#58a6ff] w-0 transition-all duration-300"></div>
                     </div>
-                    <span id="ctx-label" class="text-gray-600 text-[10px] font-mono font-bold tracking-wider">0.0k /
+                    <span id="ctx-label" class="text-[#8b949e] text-[10px] font-mono font-bold tracking-wider">0.0k /
                         128k</span>
                 </div>
             </div>
             <div class="flex items-center gap-2 no-drag pr-24" id="header-actions">
                 <select id="model-select"
-                    class="bg-gray-50 border border-gray-200 rounded-lg text-[12px] py-1 px-3 text-gray-800 outline-none cursor-pointer hover:bg-gray-100 transition shadow-sm max-w-[200px] truncate">
+                    class="bg-[#0d1117] border border-[#30363d] rounded-lg text-[12px] py-1 px-3 text-[#e6edf3] outline-none cursor-pointer hover:bg-[#21262d] transition shadow-sm max-w-[200px] truncate">
                     <option value="">No model selected</option>
                 </select>
             </div>
         </div>
         <div
-            class="h-8 flex items-center px-2 bg-gray-50 no-drag text-[12px] font-medium text-gray-600 border-t border-gray-100">
+            class="h-8 flex items-center px-2 bg-[#1c2128] no-drag text-[12px] font-medium text-[#8b949e] border-t border-[#21262d]">
+            <!-- File Menu -->
             <div class="relative group">
-                <button class="px-3 py-1 hover:bg-gray-200 rounded-md transition cursor-pointer">File</button>
+                <button
+                    class="px-3 py-1 hover:bg-[#21262d] rounded-md transition cursor-pointer text-[#c9d1d9]">File</button>
                 <div
-                    class="absolute hidden group-hover:block bg-white border border-gray-200 shadow-xl top-full left-0 z-50 min-w-[160px] py-1.5 rounded-xl">
+                    class="absolute hidden group-hover:block bg-[#161b22] border border-[#30363d] shadow-xl top-full left-0 z-50 min-w-[200px] py-1.5 rounded-xl">
                     <button id="menu-open-folder"
-                        class="w-full text-left px-4 py-1.5 hover:bg-gray-100 flex items-center gap-2"><span
-                            class="material-symbols-rounded text-[16px]">folder_open</span> Open Folder</button>
-                    <div class="h-[1px] bg-gray-100 my-1"></div>
-                    <button id="menu-settings"
-                        class="w-full text-left px-4 py-1.5 hover:bg-gray-100 flex items-center gap-2"><span
-                            class="material-symbols-rounded text-[16px]">settings</span> Settings</button>
+                        class="w-full text-left px-4 py-2 hover:bg-[#21262d] flex items-center gap-3 text-[#c9d1d9]">
+                        <span class="material-symbols-rounded text-[16px]">folder_open</span> Open Folder
+                    </button>
+                    <div class="h-[1px] bg-[#21262d] my-1"></div>
+                    <button id="menu-save-file"
+                        class="w-full text-left px-4 py-2 hover:bg-[#21262d] flex items-center gap-3 text-[#c9d1d9]">
+                        <span class="material-symbols-rounded text-[16px]">save</span> Save File (Ctrl+S)
+                    </button>
+                    <button id="menu-save-all"
+                        class="w-full text-left px-4 py-2 hover:bg-[#21262d] flex items-center gap-3 text-[#c9d1d9]">
+                        <span class="material-symbols-rounded text-[16px]">layers</span> Save All
+                    </button>
+                    <div class="h-[1px] bg-[#21262d] my-1"></div>
+                    <button id="menu-close-file"
+                        class="w-full text-left px-4 py-2 hover:bg-[#21262d] flex items-center gap-3 text-[#c9d1d9]">
+                        <span class="material-symbols-rounded text-[16px]">close</span> Close File
+                    </button>
                 </div>
             </div>
+            <!-- Edit Menu -->
             <div class="relative group">
-                <button class="px-3 py-1 hover:bg-gray-200 rounded-md transition cursor-pointer">View</button>
+                <button
+                    class="px-3 py-1 hover:bg-[#21262d] rounded-md transition cursor-pointer text-[#c9d1d9]">Edit</button>
                 <div
-                    class="absolute hidden group-hover:block bg-white border border-gray-200 shadow-xl top-full left-0 z-50 min-w-[160px] py-1.5 rounded-xl">
-                    <button id="menu-toggle-sidebar" class="w-full text-left px-4 py-1.5 hover:bg-gray-100">Toggle
-                        Sidebar</button>
-                    <button id="menu-toggle-terminal" class="w-full text-left px-4 py-1.5 hover:bg-gray-100">Toggle
-                        Terminal</button>
-                    <button id="menu-toggle-chat" class="w-full text-left px-4 py-1.5 hover:bg-gray-100">Toggle
-                        AI</button>
+                    class="absolute hidden group-hover:block bg-[#161b22] border border-[#30363d] shadow-xl top-full left-0 z-50 min-w-[180px] py-1.5 rounded-xl">
+                    <button id="menu-undo"
+                        class="w-full text-left px-4 py-2 hover:bg-[#21262d] flex items-center gap-3 text-[#c9d1d9]">
+                        <span class="material-symbols-rounded text-[16px]">undo</span> Undo
+                    </button>
+                    <button id="menu-redo"
+                        class="w-full text-left px-4 py-2 hover:bg-[#21262d] flex items-center gap-3 text-[#c9d1d9]">
+                        <span class="material-symbols-rounded text-[16px]">redo</span> Redo
+                    </button>
+                    <div class="h-[1px] bg-[#21262d] my-1"></div>
+                    <button id="menu-find"
+                        class="w-full text-left px-4 py-2 hover:bg-[#21262d] flex items-center gap-3 text-[#c9d1d9]">
+                        <span class="material-symbols-rounded text-[16px]">search</span> Find (Ctrl+F)
+                    </button>
+                    <button id="menu-select-all"
+                        class="w-full text-left px-4 py-2 hover:bg-[#21262d] flex items-center gap-3 text-[#c9d1d9]">
+                        <span class="material-symbols-rounded text-[16px]">select_all</span> Select All
+                    </button>
+                </div>
+            </div>
+            <!-- View Menu -->
+            <div class="relative group">
+                <button
+                    class="px-3 py-1 hover:bg-[#21262d] rounded-md transition cursor-pointer text-[#c9d1d9]">View</button>
+                <div
+                    class="absolute hidden group-hover:block bg-[#161b22] border border-[#30363d] shadow-xl top-full left-0 z-50 min-w-[200px] py-1.5 rounded-xl">
+                    <button id="menu-toggle-sidebar"
+                        class="w-full text-left px-4 py-2 hover:bg-[#21262d] flex items-center gap-3 text-[#c9d1d9]">
+                        <span class="material-symbols-rounded text-[16px]">menu_open</span> Toggle Sidebar
+                    </button>
+                    <button id="menu-toggle-terminal"
+                        class="w-full text-left px-4 py-2 hover:bg-[#21262d] flex items-center gap-3 text-[#c9d1d9]">
+                        <span class="material-symbols-rounded text-[16px]">terminal</span> Toggle Terminal
+                    </button>
+                    <button id="menu-toggle-chat"
+                        class="w-full text-left px-4 py-2 hover:bg-[#21262d] flex items-center gap-3 text-[#c9d1d9]">
+                        <span class="material-symbols-rounded text-[16px]">chat</span> Toggle AI Panel
+                    </button>
+                    <div class="h-[1px] bg-[#21262d] my-1"></div>
+                    <button id="menu-increase-font"
+                        class="w-full text-left px-4 py-2 hover:bg-[#21262d] flex items-center gap-3 text-[#c9d1d9]">
+                        <span class="material-symbols-rounded text-[16px]">text_increase</span> Increase Font Size
+                    </button>
+                    <button id="menu-decrease-font"
+                        class="w-full text-left px-4 py-2 hover:bg-[#21262d] flex items-center gap-3 text-[#c9d1d9]">
+                        <span class="material-symbols-rounded text-[16px]">text_decrease</span> Decrease Font Size
+                    </button>
+                    <div class="h-[1px] bg-[#21262d] my-1"></div>
+                    <button id="menu-toggle-markdown"
+                        class="w-full text-left px-4 py-2 hover:bg-[#21262d] flex items-center gap-3 text-[#c9d1d9]">
+                        <span class="material-symbols-rounded text-[16px]">article</span> Markdown Preview
+                    </button>
+                    <button id="menu-toggle-fullscreen"
+                        class="w-full text-left px-4 py-2 hover:bg-[#21262d] flex items-center gap-3 text-[#c9d1d9]">
+                        <span class="material-symbols-rounded text-[16px]">fullscreen</span> Toggle Fullscreen
+                    </button>
+                </div>
+            </div>
+            <!-- AI Menu -->
+            <div class="relative group">
+                <button
+                    class="px-3 py-1 hover:bg-[#21262d] rounded-md transition cursor-pointer text-[#c9d1d9]">AI</button>
+                <div
+                    class="absolute hidden group-hover:block bg-[#161b22] border border-[#30363d] shadow-xl top-full left-0 z-50 min-w-[220px] py-1.5 rounded-xl">
+                    <button id="menu-auto-retry"
+                        class="w-full text-left px-4 py-2 hover:bg-[#21262d] flex items-center gap-3 text-[#c9d1d9]">
+                        <span class="material-symbols-rounded text-[16px]" id="icon-auto-retry">check_circle</span>
+                        Auto Retry (Enabled)
+                    </button>
+                    <button id="menu-auto-reload"
+                        class="w-full text-left px-4 py-2 hover:bg-[#21262d] flex items-center gap-3 text-[#c9d1d9]">
+                        <span class="material-symbols-rounded text-[16px]" id="icon-auto-reload">check_circle</span>
+                        Auto Reload (Enabled)
+                    </button>
+                    <button id="menu-auto-accept"
+                        class="w-full text-left px-4 py-2 hover:bg-[#21262d] flex items-center gap-3 text-[#c9d1d9]">
+                        <span class="material-symbols-rounded text-[16px]" id="icon-auto-accept">check_circle</span>
+                        Auto Accept Changes (Enabled)
+                    </button>
+                    <div class="h-[1px] bg-[#21262d] my-1"></div>
+                    <button id="menu-export-chat"
+                        class="w-full text-left px-4 py-2 hover:bg-[#21262d] flex items-center gap-3 text-[#c9d1d9]">
+                        <span class="material-symbols-rounded text-[16px]">share</span> Export Chat
+                    </button>
+                </div>
+            </div>
+            <!-- Tools Menu -->
+            <div class="relative group">
+                <button
+                    class="px-3 py-1 hover:bg-[#21262d] rounded-md transition cursor-pointer text-[#c9d1d9]">Tools</button>
+                <div
+                    class="absolute hidden group-hover:block bg-[#161b22] border border-[#30363d] shadow-xl top-full left-0 z-50 min-w-[200px] py-1.5 rounded-xl">
+                    <button id="menu-git-status"
+                        class="w-full text-left px-4 py-2 hover:bg-[#21262d] flex items-center gap-3 text-[#c9d1d9]">
+                        <span class="material-symbols-rounded text-[16px]">history</span> Git Status
+                    </button>
+                    <button id="menu-git-commit"
+                        class="w-full text-left px-4 py-2 hover:bg-[#21262d] flex items-center gap-3 text-[#c9d1d9]">
+                        <span class="material-symbols-rounded text-[16px]">save</span> Git Commit
+                    </button>
+                    <div class="h-[1px] bg-[#21262d] my-1"></div>
+                    <button id="menu-terminal-clear"
+                        class="w-full text-left px-4 py-2 hover:bg-[#21262d] flex items-center gap-3 text-[#c9d1d9]">
+                        <span class="material-symbols-rounded text-[16px]">clear_all</span> Clear Terminal
+                    </button>
+                </div>
+            </div>
+            <!-- Settings -->
+            <div class="relative group">
+                <button class="px-3 py-1 hover:bg-[#21262d] rounded-md transition cursor-pointer text-[#c9d1d9]">
+                    <span class="material-symbols-rounded text-[16px]">settings</span>
+                </button>
+                <div
+                    class="absolute hidden group-hover:block bg-[#161b22] border border-[#30363d] shadow-xl top-full right-0 z-50 min-w-[180px] py-1.5 rounded-xl">
+                    <button id="menu-settings"
+                        class="w-full text-left px-4 py-2 hover:bg-[#21262d] flex items-center gap-3 text-[#c9d1d9]">
+                        <span class="material-symbols-rounded text-[16px]">settings</span> Settings
+                    </button>
+                    <button id="menu-about"
+                        class="w-full text-left px-4 py-2 hover:bg-[#21262d] flex items-center gap-3 text-[#c9d1d9]">
+                        <span class="material-symbols-rounded text-[16px]">info</span> About
+                    </button>
                 </div>
             </div>
         </div>
     </header>
 
-    <div class="flex-1 flex overflow-hidden bg-gray-50">
+    <div class="flex-1 flex overflow-hidden bg-[#0d1117]">
         <aside id="panel-sidebar"
-            class="w-64 bg-white border-r border-gray-200 flex flex-col shrink-0 flex-none relative z-10">
-            <div class="flex px-4 pt-3 gap-4 text-[12px] uppercase tracking-wider font-semibold">
-                <button id="tab-explorer" class="pb-1.5 tab-active transition">Explorer</button>
-                <button id="tab-history" class="pb-1.5 tab-inactive hover:text-black transition">History</button>
+            class="w-64 bg-[#161b22] border-r border-[#30363d] flex flex-col shrink-0 flex-none relative z-10">
+            <div class="flex px-4 pt-3 gap-4 text-[12px] uppercase tracking-wider font-semibold text-[#8b949e]">
+                <button id="tab-explorer"
+                    class="pb-1.5 tab-active transition text-[#e6edf3] font-bold border-b-2 border-[#58a6ff]">Explorer</button>
+                <button id="tab-history"
+                    class="pb-1.5 tab-inactive hover:text-[#e6edf3] transition text-[#8b949e]">History</button>
+                <button id="tab-search"
+                    class="pb-1.5 tab-inactive hover:text-[#e6edf3] transition text-[#8b949e]">Search</button>
+                <button id="tab-git"
+                    class="pb-1.5 tab-inactive hover:text-[#e6edf3] transition text-[#8b949e]">Git</button>
             </div>
             <div id="view-explorer" class="flex-1 flex flex-col overflow-hidden">
                 <div
-                    class="px-4 py-2 border-y border-gray-100 bg-gray-50 text-[10px] font-bold text-gray-500 uppercase flex justify-between items-center">
+                    class="px-4 py-2 border-y border-[#21262d] bg-[#1c2128] text-[10px] font-bold text-[#8b949e] uppercase flex justify-between items-center">
                     <span id="folder-name-label" class="truncate">NO FOLDER</span>
                     <div class="flex items-center gap-1">
-                        <button id="btn-vscode" class="hover:text-blue-600 hidden transition"
+                        <button id="btn-vscode" class="hover:text-[#58a6ff] hidden transition"
                             title="Open in VSCode"><span
                                 class="material-symbols-rounded text-[14px]">code</span></button>
-                        <button id="btn-refresh-folder" class="hover:text-black hidden transition" title="Refresh"><span
-                                class="material-symbols-rounded text-[14px]">refresh</span></button>
+                        <button id="btn-refresh-folder" class="hover:text-[#e6edf3] hidden transition"
+                            title="Refresh"><span class="material-symbols-rounded text-[14px]">refresh</span></button>
                     </div>
                 </div>
                 <input type="file" id="folder-input" webkitdirectory directory class="hidden" />
                 <ul id="file-list" class="flex-1 overflow-y-auto text-[13px] p-2 space-y-1 select-none">
-                    <div class="p-4 text-center text-gray-400 text-xs">Open a folder to start</div>
+                    <div class="p-4 text-center text-[#8b949e] text-xs">Open a folder to start</div>
                 </ul>
             </div>
-            <div id="view-history" class="flex-1 hidden flex-col overflow-hidden bg-gray-50">
-                <div class="p-3 border-b border-gray-100 flex gap-2 shrink-0 bg-white shadow-sm items-center">
+            <div id="view-history" class="flex-1 hidden flex-col overflow-hidden bg-[#0d1117]">
+                <div class="p-3 border-b border-[#21262d] flex gap-2 shrink-0 bg-[#161b22] shadow-sm items-center">
                     <button id="btn-new-chat"
-                        class="flex-1 bg-black text-white text-[12px] py-1.5 rounded-lg hover:bg-gray-800 transition font-medium flex items-center justify-center gap-1">
+                        class="flex-1 bg-[#21262d] text-[#e6edf3] text-[12px] py-1.5 rounded-lg hover:bg-[#30363d] transition font-medium flex items-center justify-center gap-1 border border-[#30363d]">
                         <span class="material-symbols-rounded text-[16px]">add</span> New
                     </button>
-                    <div class="flex items-center gap-1.5 bg-blue-50/50 px-2 py-1.5 rounded-lg border border-blue-50">
-                        <span id="puter-user" class="text-[10px] text-blue-600 font-bold truncate max-w-[60px]"
+                    <div
+                        class="flex items-center gap-1.5 bg-[rgba(56,139,253,0.15)] px-2 py-1.5 rounded-lg border border-[rgba(56,139,253,0.3)]">
+                        <span id="puter-user" class="text-[10px] text-[#58a6ff] font-bold truncate max-w-[60px]"
                             title="Puter Account">Local</span>
                         <button id="btn-puter-sync"
-                            class="text-blue-600 text-[12px] hover:text-blue-800 transition font-medium flex items-center justify-center"
+                            class="text-[#58a6ff] text-[12px] hover:text-[#79b8ff] transition font-medium flex items-center justify-center"
                             title="Backup to Puter Cloud">
-                            <span class="material-symbols-rounded text-[16px]">cloud_sync</span>
+                            <span class="material-symbols-rounded text-[16px]">sync</span>
                         </button>
                     </div>
                 </div>
                 <ul id="history-list" class="flex-1 overflow-y-auto p-2 space-y-1"></ul>
             </div>
+
+            <!-- Search View -->
+            <div id="view-search" class="flex-1 hidden flex-col overflow-hidden bg-[#0d1117]">
+                <div class="p-3 border-b border-[#21262d] bg-[#161b22] shadow-sm">
+                    <div class="relative">
+                        <input type="text" id="search-input" placeholder="Search in files..."
+                            class="w-full bg-[#0d1117] border border-[#30363d] rounded-lg px-3 py-2 text-[12px] text-[#e6edf3] outline-none focus:border-[#58a6ff] transition">
+                        <span
+                            class="material-symbols-rounded text-[16px] text-[#8b949e] absolute right-2 top-1/2 -translate-y-1/2">search</span>
+                    </div>
+                    <div class="flex gap-2 mt-2">
+                        <label class="flex items-center gap-1 text-[11px] text-[#8b949e] cursor-pointer">
+                            <input type="checkbox" id="search-case-sensitive" class="accent-blue-500">
+                            Aa
+                        </label>
+                        <label class="flex items-center gap-1 text-[11px] text-[#8b949e] cursor-pointer">
+                            <input type="checkbox" id="search-regex" class="accent-blue-500">
+                            .*
+                        </label>
+                        <label class="flex items-center gap-1 text-[11px] text-[#8b949e] cursor-pointer">
+                            <input type="checkbox" id="search-whole-word" class="accent-blue-500">
+                            Ww
+                        </label>
+                    </div>
+                </div>
+                <div id="search-results" class="flex-1 overflow-y-auto p-2"></div>
+            </div>
+
+            <!-- Git View -->
+            <div id="view-git" class="flex-1 hidden flex-col overflow-hidden bg-[#0d1117]">
+                <div class="p-3 border-b border-[#21262d] bg-[#161b22] shadow-sm">
+                    <div class="flex gap-2">
+                        <button id="btn-git-status"
+                            class="flex-1 bg-[#21262d] text-[#e6edf3] text-[11px] py-1.5 rounded-lg hover:bg-[#30363d] transition font-medium border border-[#30363d]">
+                            <span class="material-symbols-rounded text-[14px] mr-1">refresh</span> Status
+                        </button>
+                        <button id="btn-git-commit"
+                            class="flex-1 bg-[#21262d] text-[#e6edf3] text-[11px] py-1.5 rounded-lg hover:bg-[#30363d] transition font-medium border border-[#30363d]">
+                            <span class="material-symbols-rounded text-[14px] mr-1">save</span> Commit
+                        </button>
+                    </div>
+                    <input type="text" id="git-commit-input" placeholder="Commit message..."
+                        class="w-full mt-2 bg-[#0d1117] border border-[#30363d] rounded-lg px-3 py-2 text-[11px] text-[#e6edf3] outline-none focus:border-[#58a6ff] transition hidden">
+                </div>
+                <div id="git-status" class="flex-1 overflow-y-auto p-2">
+                    <div class="p-4 text-center text-[#8b949e] text-xs">No changes</div>
+                </div>
+            </div>
         </aside>
 
         <div class="resizer-x" id="drag-sidebar"></div>
-        <main class="flex-1 flex flex-col min-w-0 bg-white relative shadow-inner">
+        <main class="flex-1 flex flex-col min-w-0 bg-[#0d1117] relative shadow-inner">
             <div
-                class="h-10 border-b border-gray-200 bg-[#f8f9fa] flex items-center justify-between z-10 shadow-sm w-full overflow-hidden">
+                class="h-10 border-b border-[#30363d] bg-[#161b22] flex items-center justify-between z-10 shadow-sm w-full overflow-hidden">
                 <div class="flex items-end h-full overflow-x-auto flex-1 px-2 pt-1.5 gap-1 no-scrollbar"
                     id="editor-tabs">
-                    <div class="text-xs text-gray-400 pl-2 py-1.5 italic select-none">No files open</div>
+                    <div class="text-xs text-[#8b949e] pl-2 py-1.5 italic select-none">No files open</div>
                 </div>
-                <div class="flex items-center px-3 shrink-0 bg-[#f8f9fa] border-l border-gray-200 h-full z-20">
+                <div class="flex items-center px-3 shrink-0 bg-[#161b22] border-l border-[#30363d] h-full z-20">
                     <button id="btn-save-file"
-                        class="hidden text-[11px] bg-blue-50 text-blue-600 px-3 py-1 rounded-md hover:bg-blue-100 transition font-bold border border-blue-100 shadow-sm flex items-center gap-1">Save
+                        class="hidden text-[11px] bg-[#1f6feb] text-white px-3 py-1 rounded-md hover:bg-[#388bfd] transition font-bold flex items-center gap-1 shadow-sm">Save
                         (Ctrl+S)</button>
                 </div>
             </div>
-            <div id="file-editor" class="flex-1 w-full bg-[#fdfdfd] outline-none z-0"></div>
-            <div class="resizer-y border-t border-gray-200" id="drag-terminal"></div>
+            <div id="file-editor" class="flex-1 w-full bg-[#0d1117] outline-none z-0"></div>
+            <div class="resizer-y border-t border-[#30363d]" id="drag-terminal"></div>
 
-            <div id="panel-terminal" class="h-64 bg-[#1e1e1e] flex flex-col shrink-0 flex-none relative">
-                <div class="h-8 border-b border-[#333] bg-[#252526] flex items-center px-4 justify-between">
-                    <div class="flex items-center gap-2 text-[11px] font-bold text-gray-300 uppercase tracking-widest">
+            <div id="panel-terminal" class="h-64 bg-[#161b22] flex flex-col shrink-0 flex-none relative">
+                <div class="h-8 border-b border-[#30363d] bg-[#1c2128] flex items-center px-4 justify-between">
+                    <div class="flex items-center gap-2 text-[11px] font-bold text-[#8b949e] uppercase tracking-widest">
                         <span class="material-symbols-rounded text-[14px]">terminal</span> Terminal
                     </div>
                     <div class="flex gap-3">
-                        <button id="btn-term-clear" class="text-gray-400 hover:text-white transition"
-                            title="Clear"><span class="material-symbols-rounded text-[16px]">block</span></button>
-                        <button id="btn-term-close" class="text-gray-400 hover:text-white transition"
+                        <button id="btn-term-clear" class="text-[#8b949e] hover:text-[#e6edf3] transition"
+                            title="Clear"><span class="material-symbols-rounded text-[16px]">clear_all</span></button>
+                        <button id="btn-term-close" class="text-[#8b949e] hover:text-[#e6edf3] transition"
                             title="Close"><span class="material-symbols-rounded text-[16px]">close</span></button>
                     </div>
                 </div>
-                <div id="terminal-container" class="flex-1 p-2 overflow-hidden bg-[#1e1e1e]"></div>
+                <div id="terminal-container" class="flex-1 p-2 overflow-hidden bg-[#161b22]"></div>
             </div>
         </main>
 
-        <div class="resizer-x border-l border-gray-200" id="drag-chat"></div>
-        <aside id="panel-chat" class="w-[420px] bg-white flex flex-col shrink-0 flex-none z-10 shadow-2xl relative">
-            <div class="h-14 border-b border-gray-200 bg-white flex items-center px-5 justify-between shadow-sm z-20">
+        <div class="resizer-x border-l border-[#30363d]" id="drag-chat"></div>
+        <aside id="panel-chat" class="w-[420px] bg-[#161b22] flex flex-col shrink-0 flex-none z-10 shadow-2xl relative">
+            <div
+                class="h-14 border-b border-[#30363d] bg-[#161b22] flex items-center px-5 justify-between shadow-sm z-20">
                 <div class="flex items-center gap-3">
-                    <div class="bg-black flex items-center justify-center w-7 h-7 rounded-lg shadow-md">
-                        <img src="assets/logo.png" class="w-[18px] h-[18px] object-cover brightness-0 invert"
+                    <div
+                        class="bg-[#21262d] flex items-center justify-center w-7 h-7 rounded-lg shadow-md border border-[#30363d]">
+                        <img src="assets/logo.png" class="w-[18px] h-[18px] object-cover brightness-0 opacity-80"
                             onerror="this.style.display='none'">
                     </div>
                     <div class="flex flex-col">
-                        <span class="text-[13px] font-bold text-gray-900 tracking-wide">Ventarys IDX</span>
-                        <span class="text-[10px] text-gray-500 font-medium">Autonomous Agent</span>
+                        <span class="text-[13px] font-bold text-[#e6edf3] tracking-wide">Ventarys IDX</span>
+                        <span class="text-[10px] text-[#8b949e] font-medium">Autonomous Agent</span>
                     </div>
                 </div>
-                <button id="btn-chat-close" class="text-gray-400 hover:bg-gray-100 p-1.5 rounded-full transition">
+                <button id="btn-chat-close" class="text-[#8b949e] hover:bg-[#21262d] p-1.5 rounded-full transition">
                     <span class="material-symbols-rounded text-[18px]">close</span>
                 </button>
             </div>
-            <div id="chat-container" class="flex-1 overflow-y-auto p-5 flex flex-col gap-5 bg-gray-50/50">
+            <div id="chat-container" class="flex-1 overflow-y-auto p-5 flex flex-col gap-5 bg-[#0d1117]/50">
                 <div id="empty-state"
-                    class="flex flex-col items-center justify-center h-full text-center text-gray-400 m-auto pb-10">
-                    <span class="material-symbols-rounded text-5xl mb-3 text-gray-300">chat</span>
+                    class="flex flex-col items-center justify-center h-full text-center text-[#8b949e] m-auto pb-10">
+                    <span class="material-symbols-rounded text-5xl mb-3 text-[#484f58]">chat</span>
                     <p class="text-sm font-medium">How can I help you build today?</p>
                 </div>
             </div>
             <div
-                class="p-4 border-t border-gray-200 bg-white flex flex-col gap-2 shrink-0 z-20 shadow-[0_-4px_10px_rgba(0,0,0,0.02)]">
+                class="p-4 border-t border-[#30363d] bg-[#161b22] flex flex-col gap-2 shrink-0 z-20 shadow-[0_-4px_10px_rgba(0,0,0,0.2)]">
                 <div id="attachments-preview" class="flex gap-2 overflow-x-auto hidden pb-2"></div>
                 <div
-                    class="bg-gray-50 border border-gray-200 rounded-2xl shadow-sm focus-within:border-black focus-within:ring-1 focus-within:ring-black transition-all p-1.5 flex items-end">
+                    class="bg-[#0d1117] border border-[#30363d] rounded-2xl shadow-sm focus-within:border-[#58a6ff] focus-within:ring-1 focus-within:ring-[#58a6ff] transition-all p-1.5 flex items-end">
                     <button id="btn-attach"
-                        class="p-2 text-gray-400 hover:text-black hover:bg-gray-200 rounded-xl mb-0.5 transition"
+                        class="p-2 text-[#8b949e] hover:text-[#e6edf3] hover:bg-[#21262d] rounded-xl mb-0.5 transition"
                         title="Attach">
                         <span class="material-symbols-rounded text-[20px]">attach_file</span>
                     </button>
                     <input type="file" id="file-upload" multiple class="hidden">
                     <textarea id="chat-input"
-                        class="flex-1 bg-transparent text-gray-800 outline-none resize-none p-2.5 text-[14px] max-h-48 min-h-[40px] leading-relaxed"
+                        class="flex-1 bg-transparent text-[#e6edf3] outline-none resize-none p-2.5 text-[14px] max-h-48 min-h-[40px] leading-relaxed"
                         placeholder="Message Agent (Ctrl+Enter)..."></textarea>
                     <button id="btn-send"
-                        class="w-10 h-10 shrink-0 mb-0.5 mr-0.5 bg-black hover:bg-gray-800 text-white rounded-xl shadow-md transition-all flex items-center justify-center disabled:opacity-40 disabled:hover:bg-black">
+                        class="w-10 h-10 shrink-0 mb-0.5 mr-0.5 bg-[#21262d] hover:bg-[#30363d] text-[#e6edf3] rounded-xl shadow-md transition-all flex items-center justify-center disabled:opacity-40 disabled:hover:bg-[#21262d]">
                         <span class="material-symbols-rounded text-[20px]" id="send-icon">arrow_upward</span>
                     </button>
                 </div>
@@ -217,41 +479,41 @@
         </aside>
 
         <div id="settings-modal"
-            class="hidden fixed inset-0 bg-gray-900/40 z-50 flex items-center justify-center backdrop-blur-sm">
+            class="hidden fixed inset-0 bg-black/70 z-50 flex items-center justify-center backdrop-blur-sm">
             <div
-                class="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col transform transition-all">
-                <div class="p-5 border-b border-gray-100 flex justify-between items-center bg-white">
-                    <h2 class="text-base font-bold text-gray-900 flex items-center gap-2"><span
-                            class="material-symbols-rounded text-black">settings</span> Settings</h2>
+                class="bg-[#161b22] rounded-2xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col transform transition-all border border-[#30363d]">
+                <div class="p-5 border-b border-[#30363d] flex justify-between items-center bg-[#161b22]">
+                    <h2 class="text-base font-bold text-[#e6edf3] flex items-center gap-2"><span
+                            class="material-symbols-rounded text-[#58a6ff]">settings</span> Settings</h2>
                     <button id="btn-close-settings"
-                        class="text-gray-400 hover:text-black bg-gray-100 hover:bg-gray-200 p-1 rounded-full transition"><span
+                        class="text-[#8b949e] hover:text-[#e6edf3] bg-[#21262d] hover:bg-[#30363d] p-1 rounded-full transition"><span
                             class="material-symbols-rounded text-[18px]">close</span></button>
                 </div>
                 <div class="p-6 space-y-5">
                     <div>
-                        <label class="block text-[12px] font-bold text-gray-600 uppercase tracking-wider mb-2">Agnes AI
+                        <label class="block text-[12px] font-bold text-[#8b949e] uppercase tracking-wider mb-2">Agnes AI
                             Key</label>
                         <input type="password" id="api-key-agnes" placeholder="sk-..."
-                            class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-[13px] text-gray-800 outline-none focus:border-black focus:ring-1 focus:ring-black transition">
-                        <p class="text-[11px] text-gray-400 mt-1.5">https://apihub.agnes-ai.com/v1</p>
+                            class="w-full bg-[#0d1117] border border-[#30363d] rounded-xl px-4 py-2.5 text-[13px] text-[#e6edf3] outline-none focus:border-[#58a6ff] focus:ring-1 focus:ring-[#58a6ff] transition">
+                        <p class="text-[11px] text-[#8b949e] mt-1.5">https://apihub.agnes-ai.com/v1</p>
                     </div>
-                    <div class="h-[1px] bg-gray-100"></div>
+                    <div class="h-[1px] bg-[#21262d]"></div>
                     <div>
-                        <label class="block text-[12px] font-bold text-gray-600 uppercase tracking-wider mb-2">AquaDevs
+                        <label class="block text-[12px] font-bold text-[#8b949e] uppercase tracking-wider mb-2">AquaDevs
                             Key</label>
                         <input type="password" id="api-key-aqua" placeholder="aqua_sk-..."
-                            class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-[13px] text-gray-800 outline-none focus:border-black focus:ring-1 focus:ring-black transition">
-                        <p class="text-[11px] text-gray-400 mt-1.5">https://api.aquadevs.com/v1</p>
+                            class="w-full bg-[#0d1117] border border-[#30363d] rounded-xl px-4 py-2.5 text-[13px] text-[#e6edf3] outline-none focus:border-[#58a6ff] focus:ring-1 focus:ring-[#58a6ff] transition">
+                        <p class="text-[11px] text-[#8b949e] mt-1.5">https://api.aquadevs.com/v1</p>
                     </div>
                     <div class="flex justify-between items-center pt-3">
                         <button id="btn-fetch-models"
-                            class="text-[12px] font-bold text-gray-600 hover:text-black border border-gray-200 hover:bg-gray-50 rounded-xl px-4 py-2 flex items-center gap-2 transition"><span
+                            class="text-[12px] font-bold text-[#8b949e] hover:text-[#e6edf3] border border-[#30363d] hover:bg-[#21262d] rounded-xl px-4 py-2 flex items-center gap-2 transition"><span
                                 class="material-symbols-rounded text-[16px]">sync</span> Fetch Models</button>
                         <button id="btn-save-settings"
-                            class="bg-black hover:bg-gray-800 text-white text-[13px] px-6 py-2.5 rounded-xl transition shadow-lg shadow-black/20 font-bold">Save</button>
+                            class="bg-[#21262d] hover:bg-[#30363d] text-[#e6edf3] text-[13px] px-6 py-2.5 rounded-xl transition shadow-lg border border-[#30363d] font-bold">Save</button>
                     </div>
                     <div id="settings-error"
-                        class="hidden text-red-600 text-[12px] bg-red-50 p-3 rounded-xl border border-red-100 font-medium">
+                        class="hidden text-[#f85149] text-[12px] bg-[rgba(248,81,73,0.1)] p-3 rounded-xl border border-[rgba(248,81,73,0.2)] font-medium">
                     </div>
                 </div>
             </div>

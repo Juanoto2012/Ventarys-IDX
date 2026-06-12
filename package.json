@@ -1,6 +1,6 @@
 {
     "name": "ventarys-idx",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "description": "Ventarys IDX - Agente Inteligente de Código",
     "main": "main.js",
     "scripts": {

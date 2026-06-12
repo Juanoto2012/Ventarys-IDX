@@ -1,5 +1,5 @@
 // CONFIG: Set your current app version here to compare against GitHub Releases
-const CURRENT_APP_VERSION = "v1.0.0";
+const CURRENT_APP_VERSION = "v1.0.1";
 const REPO_LATEST_RELEASE_URL = "https://api.github.com/repos/Juanoto2012/Ventarys-IDX/releases/latest";
 
 // CORE: Handle Electron vs Web dependencies
@@ -32,35 +32,99 @@ if (typeof require !== 'undefined') {
 }
 
 // --- AUTO UPDATER SYSTEM FOR PORTABLE .EXE ---
+// Parse version string to comparable array of numbers
+function parseVersion(versionStr) {
+    // Strip 'v' prefix if present
+    versionStr = versionStr.replace(/^v/, '');
+    // Split by '.' and convert to numbers
+    return versionStr.split('.').map(part => {
+        const num = parseInt(part, 10);
+        return isNaN(num) ? 0 : num;
+    });
+}
+
+// Compare two version arrays
+// Returns: 1 if v1 > v2, -1 if v1 < v2, 0 if equal
+function compareVersions(v1, v2) {
+    const arr1 = parseVersion(v1);
+    const arr2 = parseVersion(v2);
+    const len = Math.max(arr1.length, arr2.length);
+
+    for (let i = 0; i < len; i++) {
+        const num1 = i < arr1.length ? arr1[i] : 0;
+        const num2 = i < arr2.length ? arr2[i] : 0;
+
+        if (num1 > num2) return 1;
+        if (num1 < num2) return -1;
+    }
+    return 0;
+}
+
 async function checkForUpdates() {
     if (!isElectron) return; // Only update if running natively
     try {
         const res = await fetch(REPO_LATEST_RELEASE_URL);
-        if (!res.ok) return;
+        if (!res.ok) {
+            console.log("Update check failed (HTTP " + res.status + ")");
+            return;
+        }
         const data = await res.json();
 
-        if (data.tag_name && data.tag_name !== CURRENT_APP_VERSION) {
+        if (!data.tag_name) {
+            console.log("No tag_name found in release data");
+            return;
+        }
+
+        // Get current version without 'v' prefix
+        const currentVer = CURRENT_APP_VERSION.replace(/^v/, '');
+        const latestTag = data.tag_name; // Keep the 'v' prefix from GitHub
+
+        console.log(`[Updater] Current: ${currentVer} | GitHub: ${latestTag}`);
+
+        // Compare versions numerically
+        const cmp = compareVersions(currentVer, latestTag);
+
+        if (cmp < 0) {
+            // Latest version is greater - update available
+            console.log(`[Updater] Update available! ${currentVer} < ${latestTag}`);
             const exeAsset = data.assets.find(a => a.name.endsWith('.exe'));
             if (exeAsset) {
-                showUpdateUI(data.tag_name, exeAsset.browser_download_url);
+                showUpdateUI(latestTag, exeAsset.browser_download_url);
+            } else {
+                console.log("[Updater] No .exe asset found in release");
             }
+        } else if (cmp === 0) {
+            // Versions are equal - up to date
+            console.log(`[Updater] App is up to date! ${currentVer} == ${latestTag}`);
+        } else {
+            // Current version is greater (pre-release scenario)
+            console.log(`[Updater] Current (${currentVer}) is newer than GitHub (${latestTag})`);
         }
     } catch (err) {
-        console.warn("Failed to check for updates:", err);
+        console.warn("[Updater] Failed to check for updates:", err);
     }
 }
 
 function showUpdateUI(version, downloadUrl) {
     const headerActions = document.getElementById('header-actions');
+
+    // Remove existing update button if present
+    const existingBtn = headerActions.querySelector('[id^="update-btn-"]');
+    if (existingBtn) return; // Already showing update UI
+
     const updateBtn = document.createElement('button');
+    updateBtn.id = `update-btn-${version}`;
     updateBtn.className = 'bg-blue-600 hover:bg-blue-700 text-white text-[12px] font-bold py-1 px-3 rounded-lg flex items-center gap-1 transition shadow-sm animate-pulse mr-2';
-    updateBtn.innerHTML = `<span class="material-symbols-rounded text-[14px]">download</span> Update to ${version}`;
+    updateBtn.innerHTML = `<span class="material-symbols-rounded text-[14px]">system_update</span> Update to ${version}`;
 
     updateBtn.onclick = () => {
-        updateBtn.innerHTML = `<span class="material-symbols-rounded text-[14px] animate-spin">sync</span> Downloading...`;
-        updateBtn.disabled = true;
-        updateBtn.classList.remove('animate-pulse');
-        performPortableUpdate(downloadUrl);
+        // Open GitHub releases page in default browser
+        if (isElectron) {
+            const { shell } = require('electron');
+            shell.openExternal('https://github.com/Juanoto2012/Ventarys-IDX/releases');
+        } else {
+            window.open('https://github.com/Juanoto2012/Ventarys-IDX/releases', '_blank');
+        }
     };
 
     headerActions.prepend(updateBtn);
@@ -84,28 +148,55 @@ function downloadFileNative(url, dest) {
     });
 }
 
-async function performPortableUpdate(url) {
+async function performPortableUpdate(url, version) {
     try {
-        showNotification("Ventarys IDX Updater", "Downloading update in background...");
+        showNotification("Ventarys IDX Updater", `Downloading ${version} in background...`);
         const tempExePath = path.join(os.tmpdir(), 'Ventarys_Update.exe');
         const currentExePath = process.execPath;
+        const currentDir = path.dirname(currentExePath);
 
         await downloadFileNative(url, tempExePath);
-        showNotification("Ventarys IDX Updater", "Download complete. Restarting to apply update...");
+        showNotification("Ventarys IDX Updater", `Installing ${version}...`);
 
-        // Create a batch script that waits, overwrites the executable, and launches it again
-        const batPath = path.join(os.tmpdir(), 'update_ventarys.bat');
-        const batContent = `
-@echo off
-timeout /t 3 /nobreak > nul
-move /Y "${tempExePath}" "${currentExePath}"
+        // User data is stored in localStorage which persists in the app files
+        // When we overwrite just the .exe, all user data remains intact
+        // Data locations preserved:
+        // - localStorage data: stored in app files, not affected by .exe overwrite
+        // - Files in user's project folders: completely untouched
+
+        // Create a robust batch script that waits, overwrites, and restarts
+        const batPath = path.join(os.tmpdir(), 'update_ventarys_' + Date.now() + '.bat');
+        const batContent = `@echo off
+chcp 65001 > nul
+setlocal EnableDelayedExpansion
+
+:: Wait for the app to fully release the file handle
+echo Waiting for Ventarys IDX to close...
+set retries=10
+:waitloop
+if !retries! LEQ 0 goto startapp
+timeout /t 1 /nobreak > nul
+set /a retries-=1
+goto waitloop
+
+:: Overwrite the executable (preserves all user data in localStorage)
+echo Installing update...
+copy /Y "${tempExePath}" "${currentExePath}" > nul
+
+:: Clean up the downloaded update file
+del "${tempExePath}" > nul
+
+:: Launch the updated application
+echo Starting Ventarys IDX v${CURRENT_APP_VERSION.replace('v', '')}...
 start "" "${currentExePath}"
+
+:: Delete this batch file
 del "%~f0"
-                `.trim();
+`.trim();
 
         fs.writeFileSync(batPath, batContent, 'utf8');
 
-        // Launch detached script to bypass locking rules
+        // Launch detached script to bypass file locking
         const child = spawn('cmd.exe', ['/c', batPath], {
             detached: true,
             stdio: 'ignore',
@@ -113,12 +204,28 @@ del "%~f0"
         });
         child.unref();
 
-        // Exit app so script can overwrite it
+        // Close all windows and exit app immediately
         if (typeof require !== 'undefined') {
-            const { ipcRenderer } = require('electron');
-            if (ipcRenderer) ipcRenderer.send('quit-app');
+            try {
+                const { ipcRenderer } = require('electron');
+                if (ipcRenderer) {
+                    ipcRenderer.send('quit-app');
+                }
+            } catch (e) {
+                // IPC not available, proceed with direct exit
+            }
         }
-        setTimeout(() => process.exit(0), 500);
+
+        // Force quit after a brief delay
+        setTimeout(() => {
+            try {
+                if (typeof process !== 'undefined' && process.exit) {
+                    process.exit(0);
+                }
+            } catch (e) {
+                // Ignore errors during exit
+            }
+        }, 1000);
 
     } catch (err) {
         alert("Error applying update: " + err.message);
@@ -142,6 +249,235 @@ let ptyProcess = null, term = null, currentFolderPath = '', editor = null;
 let openFiles = [];
 let activeFilePath = null;
 let isEditorUpdating = false;
+
+// --- LARGE PROJECT SUPPORT ---
+const MAX_OPEN_FILES = 200; // Maximum files to keep in memory
+const MAX_FILE_SIZE_MEMORY = 5 * 1024 * 1024; // 5MB per file max in memory
+const DEBOUNCE_SAVE_DELAY = 1500; // 1.5s debounce for saves
+
+// File cache with LRU eviction
+let fileCache = new Map(); // path -> { content, timestamp, size }
+let cacheOrder = []; // For LRU tracking
+const MAX_CACHE_ENTRIES = 500;
+
+// Project file index (built asynchronously)
+let projectFileIndex = []; // Pre-built file list for fast search
+let indexingInProgress = false;
+let projectFileCount = 0;
+
+// Debounce timer for expensive operations
+let folderLoadTimer = null;
+let saveDebounceTimers = new Map(); // filePath -> timerId
+
+// .gitignore patterns cache
+let gitignorePatterns = new Set();
+let gitignoreRawPatterns = [];
+
+// File filter settings
+let excludedDirs = new Set(['node_modules', 'bower_components', 'dist', 'build', '.git', '.svn', 'vendor', '__pycache__', '.next', '.nuxt', '.cache', 'coverage', '.idea', '.vscode', '.settings', 'obj', 'Debug', 'Release']);
+let excludedFiles = new Set(['Thumbs.db', '.DS_Store', '.gitignore', '.gitkeep']);
+let maxDirectoryDepth = 30; // Prevent infinitely deep traversal
+
+// Virtual scroll settings for file explorer
+const VIRTUAL_SCROLL_THRESHOLD = 100; // Items before enabling virtual scroll
+let virtualScrollEnabled = false;
+const VIRTUAL_ITEM_HEIGHT = 32;
+let visibleStartIndex = 0;
+let visibleEndIndex = 0;
+let filteredFileTree = [];
+
+// Progress tracking
+let folderLoadProgress = { current: 0, total: 0, cancelled: false };
+
+// --- AUTO RETRY SYSTEM ---
+const MAX_RETRIES = 5;
+const RETRY_DELAY = 1000; // 1 second base delay
+let retryCount = 0;
+let pendingApiRequest = null;
+
+// --- AUTO RELOAD SYSTEM ---
+let fileSnapshotMap = new Map(); // Track file content hashes for change detection
+let autoReloadEnabled = localStorage.getItem('ventarys_autoReload') !== 'false'; // Default true
+
+// --- ACCEPT/REJECT CHANGES SYSTEM ---
+let pendingChanges = []; // Stack of pending file changes
+let activeChangeBanner = null;
+
+function getFileHash(content) {
+    let hash = 0;
+    if (content.length === 0) return hash.toString();
+    for (let i = 0; i < content.length; i++) {
+        const char = content.charCodeAt(i);
+        hash = ((hash << 5) - hash) + char;
+        hash = hash & hash;
+    }
+    return hash.toString();
+}
+
+function trackFileChanges() {
+    if (!isElectron) return;
+    openFiles.forEach(f => {
+        const currentHash = getFileHash(f.content);
+        const prevHash = fileSnapshotMap.get(f.path);
+        if (prevHash && prevHash !== currentHash) {
+            // File was modified externally (by AI)
+            handleExternalFileChange(f.path, f.content);
+        }
+        fileSnapshotMap.set(f.path, currentHash);
+    });
+}
+
+function handleExternalFileChange(filePath, newContent) {
+    const fileName = path.basename(filePath);
+
+    // Show change banner
+    const banner = document.getElementById('change-banner');
+    const fileLabel = document.getElementById('change-banner-file');
+    fileLabel.textContent = fileName;
+    banner.classList.remove('hidden');
+
+    // Store pending change
+    activeChangeBanner = {
+        filePath: filePath,
+        newContent: newContent,
+        timestamp: Date.now()
+    };
+
+    // Auto-accept if enabled and file is open in editor
+    if (autoReloadEnabled) {
+        setTimeout(() => {
+            acceptChange();
+        }, 2000); // Auto-accept after 2 seconds
+    }
+}
+
+function acceptChange() {
+    if (!activeChangeBanner) return;
+
+    const { filePath, newContent } = activeChangeBanner;
+    const f = openFiles.find(x => x.path === filePath);
+
+    if (f && editor) {
+        isEditorUpdating = true;
+        f.content = newContent;
+        f.isDirty = false;
+
+        if (activeFilePath === filePath) {
+            editor.setValue(newContent, -1);
+        }
+
+        // Save to disk if in Electron
+        if (isElectron) {
+            try {
+                fs.writeFileSync(filePath, newContent, 'utf8');
+            } catch (e) {
+                console.error('Error saving accepted change:', e);
+            }
+        }
+
+        renderTabs();
+        isEditorUpdating = false;
+    }
+
+    hideChangeBanner();
+}
+
+function rejectChange() {
+    if (!activeChangeBanner) return;
+
+    const { filePath } = activeChangeBanner;
+    const f = openFiles.find(x => x.path === filePath);
+
+    if (f && editor) {
+        // Restore original content from snapshot
+        const prevHash = fileSnapshotMap.get(filePath);
+        isEditorUpdating = true;
+        f.isDirty = false;
+
+        if (activeFilePath === filePath) {
+            editor.setValue(f.content, -1);
+        }
+
+        renderTabs();
+        isEditorUpdating = false;
+    }
+
+    hideChangeBanner();
+}
+
+function hideChangeBanner() {
+    const banner = document.getElementById('change-banner');
+    banner.classList.add('hidden');
+    activeChangeBanner = null;
+}
+
+// Setup accept/reject button handlers
+function setupChangeButtons() {
+    const acceptBtn = document.getElementById('btn-accept-change');
+    const rejectBtn = document.getElementById('btn-reject-change');
+
+    if (acceptBtn) {
+        acceptBtn.onclick = acceptChange;
+    }
+    if (rejectBtn) {
+        rejectBtn.onclick = rejectChange;
+    }
+}
+
+// --- AUTO RETRY API FETCH ---
+async function fetchWithRetry(url, options, maxRetries = MAX_RETRIES) {
+    let lastError;
+
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        try {
+            // Show retry indicator if not first attempt
+            if (attempt > 0) {
+                showRetryIndicator(attempt, maxRetries);
+                const delay = RETRY_DELAY * Math.pow(2, attempt - 1);
+                await new Promise(resolve => setTimeout(resolve, delay));
+            }
+
+            const response = await fetch(url, options);
+
+            // Check for error status
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+
+            // Hide retry indicator on success
+            hideRetryIndicator();
+            return response;
+        } catch (error) {
+            lastError = error;
+            console.warn(`API Request failed (attempt ${attempt + 1}/${maxRetries + 1}):`, error.message);
+
+            // Don't retry on abort
+            if (error.name === 'AbortError') {
+                throw error;
+            }
+        }
+    }
+
+    // All retries exhausted
+    hideRetryIndicator();
+    throw new Error(`API request failed after ${maxRetries + 1} attempts: ${lastError.message}`);
+}
+
+function showRetryIndicator(attempt, max) {
+    const indicator = document.getElementById('retry-indicator');
+    const text = document.getElementById('retry-text');
+    if (indicator && text) {
+        text.textContent = `Retrying... (${attempt}/${max})`;
+        indicator.classList.remove('hidden');
+    }
+}
+
+function hideRetryIndicator() {
+    const indicator = document.getElementById('retry-indicator');
+    if (indicator) {
+        indicator.classList.add('hidden');
+    }
+}
 
 function initTerminal() {
     term = new Terminal({ theme: { background: '#1e1e1e', foreground: '#d4d4d4', cursor: '#d4d4d4', selection: '#444' }, fontFamily: 'Consolas, monospace', fontSize: 13, cursorBlink: true, convertEol: true });
@@ -293,22 +629,107 @@ function updateEditorToActiveFile() {
 
 function openFile(fp) {
     try {
-        if (!openFiles.find(f => f.path === fp)) { const content = fs.readFileSync(fp, 'utf-8'); openFiles.push({ path: fp, content: content, isDirty: false }); }
-        activeFilePath = fp; renderTabs(); updateEditorToActiveFile();
-    } catch (err) { console.error(err); }
+        // Check if file is already open
+        let fileEntry = openFiles.find(f => f.path === fp);
+
+        if (!fileEntry) {
+            // LRU eviction: if at max capacity, close least recently used files
+            if (openFiles.length >= MAX_OPEN_FILES) {
+                const lruFile = openFiles.shift();
+                fileCache.delete(lruFile.path);
+                console.log(`[File Handler] LRU eviction: closed ${path.basename(lruFile.path)}`);
+            }
+
+            // Check if file is in cache
+            const cached = fileCache.get(fp);
+            let content;
+
+            if (cached && Date.now() - cached.timestamp < 30000) {
+                content = cached.content;
+            } else {
+                // Read from disk with size check
+                const stats = fs.statSync(fp);
+                const fileSize = stats.size;
+
+                if (fileSize > MAX_FILE_SIZE_MEMORY) {
+                    if (confirm(`File ${path.basename(fp)} is ${formatFileSize(fileSize)}. Large files may impact performance. Open anyway?`)) {
+                        content = fs.readFileSync(fp, 'utf-8');
+                    } else {
+                        return;
+                    }
+                } else {
+                    content = fs.readFileSync(fp, 'utf-8');
+                }
+
+                // Store in cache
+                fileCache.set(fp, { content, timestamp: Date.now(), size: fileSize });
+                cacheOrder.unshift(fp);
+
+                // Evict oldest cache entries if cache is too large
+                while (cacheOrder.length > MAX_CACHE_ENTRIES) {
+                    const oldest = cacheOrder.pop();
+                    fileCache.delete(oldest);
+                }
+            }
+
+            fileEntry = { path: fp, content: content, isDirty: false, lastAccessed: Date.now() };
+            openFiles.push(fileEntry);
+        } else {
+            fileEntry.lastAccessed = Date.now();
+        }
+
+        activeFilePath = fp;
+        renderTabs();
+        updateEditorToActiveFile();
+    } catch (err) {
+        console.error('[File Handler] Error opening file:', err);
+        showNotification('Error', `Failed to open: ${path.basename(fp)}`);
+    }
 }
 
 function saveCurrentFile() {
     if (!isElectron || !activeFilePath) return;
-    try {
-        const content = editor.getValue();
-        fs.writeFileSync(activeFilePath, content, 'utf8');
-        const f = openFiles.find(x => x.path === activeFilePath);
-        if (f) { f.content = content; f.isDirty = false; renderTabs(); }
-        const btn = document.getElementById('btn-save-file');
-        btn.innerHTML = '<span class="material-symbols-rounded text-[14px]">check</span> Saved!';
-        setTimeout(() => btn.innerHTML = 'Save (Ctrl+S)', 2000);
-    } catch (e) { alert("Error saving: " + e.message); }
+
+    const fp = activeFilePath;
+
+    // Debounce rapid saves
+    if (saveDebounceTimers.has(fp)) {
+        clearTimeout(saveDebounceTimers.get(fp));
+    }
+
+    saveDebounceTimers.set(fp, setTimeout(() => {
+        try {
+            const content = editor.getValue();
+            fs.writeFileSync(fp, content, 'utf8');
+
+            const f = openFiles.find(x => x.path === fp);
+            if (f) {
+                f.content = content;
+                f.isDirty = false;
+
+                // Update cache
+                fileCache.set(fp, { content, timestamp: Date.now(), size: Buffer.byteLength(content) });
+
+                renderTabs();
+            }
+
+            const btn = document.getElementById('btn-save-file');
+            if (btn) {
+                btn.innerHTML = '<span class="material-symbols-rounded text-[14px]">check</span> Saved!';
+                setTimeout(() => btn.innerHTML = 'Save (Ctrl+S)', 2000);
+            }
+        } catch (e) {
+            console.error('[File Handler] Save error:', e);
+            showNotification('Save Error', `Failed to save: ${e.message}`);
+        }
+    }, DEBOUNCE_SAVE_DELAY));
+}
+
+function formatFileSize(bytes) {
+    if (bytes === 0) return '0 B';
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(1024));
+    return `${(bytes / Math.pow(1024, i)).toFixed(1)} ${sizes[i]}`;
 }
 
 async function updatePuterUser() { if (typeof puter !== 'undefined' && puter.auth.isSignedIn()) { try { const u = await puter.auth.getUser(); document.getElementById('puter-user').textContent = u.username; } catch (e) { } } }
@@ -320,7 +741,7 @@ async function syncWithPuter() {
         await puter.fs.write('ventarys_studio_backup.json', data);
         showNotification('Ventarys IDX', 'Successfully synced with Puter.');
     } catch (e) { alert('Sync error: ' + e.message); }
-    btn.innerHTML = '<span class="material-symbols-rounded text-[16px]">cloud_sync</span>';
+    btn.innerHTML = '<span class="material-symbols-rounded text-[16px]">sync</span>';
 }
 
 document.getElementById('btn-vscode').onclick = () => { if (isElectron && currentFolderPath) { cpModule.exec(`code "${currentFolderPath}"`, (err) => { if (err) alert("VSCode was not found in your PATH."); }); } };
@@ -328,7 +749,7 @@ document.getElementById('btn-vscode').onclick = () => { if (isElectron && curren
 function init() {
     initTerminal();
     editor = ace.edit("file-editor");
-    editor.setTheme("ace/theme/textmate");
+    editor.setTheme("ace/theme/github_dark");
     editor.setOptions({ fontFamily: "Consolas, monospace", fontSize: "14px", showPrintMargin: false, enableBasicAutocompletion: true, enableLiveAutocompletion: true });
     window.addEventListener('resize', () => editor.resize());
     editor.commands.addCommand({ name: 'save', bindKey: { win: "Ctrl-S", "mac": "Cmd-S" }, exec: saveCurrentFile });
@@ -352,16 +773,343 @@ function init() {
     const switchTab = (t, b) => {
         document.getElementById('tab-explorer').className = 'pb-1.5 tab-inactive hover:text-black transition';
         document.getElementById('tab-history').className = 'pb-1.5 tab-inactive hover:text-black transition';
+        document.getElementById('tab-search').className = 'pb-1.5 tab-inactive hover:text-black transition';
+        document.getElementById('tab-git').className = 'pb-1.5 tab-inactive hover:text-black transition';
         b.className = 'pb-1.5 tab-active transition';
         document.getElementById('view-explorer').classList.add('hidden');
         document.getElementById('view-history').classList.add('hidden');
-        document.getElementById(`view-${t}`).classList.remove('hidden'); document.getElementById(`view-${t}`).classList.add('flex');
+        document.getElementById('view-search').classList.add('hidden');
+        document.getElementById('view-git').classList.add('hidden');
+        document.getElementById(`view-${t}`).classList.remove('hidden');
+        document.getElementById(`view-${t}`).classList.add('flex');
     };
     document.getElementById('tab-explorer').onclick = e => switchTab('explorer', e.target);
     document.getElementById('tab-history').onclick = e => switchTab('history', e.target);
+    document.getElementById('tab-search').onclick = e => switchTab('search', e.target);
+    document.getElementById('tab-git').onclick = e => switchTab('git', e.target);
+
+    // --- SEARCH FUNCTIONALITY ---
+    let searchTimeout = null;
+    const searchInput = document.getElementById('search-input');
+    if (searchInput) {
+        searchInput.addEventListener('input', () => {
+            if (searchTimeout) clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(performSearch, 300);
+        });
+        document.getElementById('search-case-sensitive').addEventListener('change', () => { if (searchInput.value) performSearch(); });
+        document.getElementById('search-regex').addEventListener('change', () => { if (searchInput.value) performSearch(); });
+        document.getElementById('search-whole-word').addEventListener('change', () => { if (searchInput.value) performSearch(); });
+    }
+
+    function performSearch() {
+        const query = searchInput?.value?.trim();
+        const resultsDiv = document.getElementById('search-results');
+        if (!query || !currentFolderPath || !resultsDiv) return;
+
+        const caseSensitive = document.getElementById('search-case-sensitive')?.checked || false;
+        const useRegex = document.getElementById('search-regex')?.checked || false;
+        const wholeWord = document.getElementById('search-whole-word')?.checked || false;
+
+        resultsDiv.innerHTML = '<div class="p-2 text-center text-[#8b949e] text-xs">Searching...</div>';
+
+        setTimeout(() => {
+            try {
+                const results = [];
+                const searchInDir = (dirPath) => {
+                    try {
+                        const entries = fs.readdirSync(dirPath, { withFileTypes: true });
+                        entries.forEach(entry => {
+                            const fullPath = path.join(dirPath, entry.name);
+                            if (entry.isDirectory()) {
+                                if (!entry.name.startsWith('.') && entry.name !== 'node_modules' && entry.name !== '.git') {
+                                    searchInDir(fullPath);
+                                }
+                            } else {
+                                try {
+                                    const content = fs.readFileSync(fullPath, 'utf8');
+                                    let match = false;
+
+                                    if (useRegex) {
+                                        const flags = caseSensitive ? 'g' : 'gi';
+                                        try {
+                                            const regex = new RegExp(wholeWord ? `\\b${query}\\b` : query, flags);
+                                            if (regex.test(content)) match = true;
+                                        } catch (e) {
+                                            resultsDiv.innerHTML = `<div class="p-2 text-center text-[#f85149] text-xs">Invalid regex: ${e.message}</div>`;
+                                            return;
+                                        }
+                                    } else {
+                                        const searchQuery = caseSensitive ? query : query.toLowerCase();
+                                        const searchContent = caseSensitive ? content : content.toLowerCase();
+                                        if (wholeWord) {
+                                            const regex = new RegExp(`\\b${escapeRegex(searchQuery)}\\b`, 'g');
+                                            if (regex.test(searchContent)) match = true;
+                                        } else {
+                                            if (searchContent.includes(searchQuery)) match = true;
+                                        }
+                                    }
+
+                                    if (match) {
+                                        const lines = content.split('\n');
+                                        let lineNum = 0;
+                                        let currentLine = '';
+                                        let matchLine = -1;
+
+                                        for (let i = 0; i < lines.length; i++) {
+                                            const line = caseSensitive ? lines[i] : lines[i].toLowerCase();
+                                            const checkQuery = caseSensitive ? query : query.toLowerCase();
+                                            if (wholeWord) {
+                                                const regex = new RegExp(`\\b${escapeRegex(checkQuery)}\\b`);
+                                                if (regex.test(line)) { matchLine = i + 1; currentLine = lines[i].trim(); break; }
+                                            } else {
+                                                if (line.includes(checkQuery)) { matchLine = i + 1; currentLine = lines[i].trim(); break; }
+                                            }
+                                        }
+
+                                        if (matchLine !== -1) {
+                                            results.push({
+                                                file: path.relative(currentFolderPath, fullPath),
+                                                line: matchLine,
+                                                content: currentLine.substring(0, 100)
+                                            });
+                                        }
+                                    }
+                                } catch (e) { }
+                            }
+                        });
+                    } catch (e) { }
+                };
+
+                searchInDir(currentFolderPath);
+
+                if (results.length === 0) {
+                    resultsDiv.innerHTML = '<div class="p-4 text-center text-[#8b949e] text-xs">No results found</div>';
+                } else {
+                    resultsDiv.innerHTML = results.slice(0, 100).map(r => `
+                        <div class="search-result-item p-2 mb-1 rounded hover:bg-[#21262d] cursor-pointer transition" onclick="goToSearchResult('${r.file.replace(/\\/g, '\\\\')}', ${r.line})">
+                            <div class="text-[11px] font-bold text-[#58a6ff] truncate">${r.file}</div>
+                            <div class="text-[10px] text-[#8b949e] mt-0.5">Line ${r.line}: ${escapeHtml(r.content)}...</div>
+                        </div>
+                    `).join('');
+                    resultsDiv.innerHTML += results.length > 100 ? `<div class="p-2 text-center text-[#8b949e] text-xs">... and ${results.length - 100} more results</div>` : '';
+                }
+            } catch (e) {
+                resultsDiv.innerHTML = `<div class="p-2 text-center text-[#f85149] text-xs">Search error: ${e.message}</div>`;
+            }
+        }, 10);
+    }
+
+    function escapeRegex(str) { return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+    function escapeHtml(str) { return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+
+    window.goToSearchResult = function (filePath, lineNum) {
+        openFile(filePath);
+        setTimeout(() => {
+            if (editor) {
+                editor.gotoLine(lineNum, 0, true);
+                editor.selection.selectLine();
+            }
+        }, 200);
+    };
+
+    // --- GIT FUNCTIONALITY ---
+    const btnGitStatus = document.getElementById('btn-git-status');
+    const btnGitCommit = document.getElementById('btn-git-commit');
+    const gitCommitInput = document.getElementById('git-commit-input');
+    const gitStatusDiv = document.getElementById('git-status');
+
+    if (btnGitStatus) {
+        btnGitStatus.onclick = async () => {
+            if (!currentFolderPath) {
+                gitStatusDiv.innerHTML = '<div class="p-4 text-center text-[#f85149] text-xs">No folder open</div>';
+                return;
+            }
+            gitStatusDiv.innerHTML = '<div class="p-4 text-center text-[#8b949e] text-xs">Fetching git status...</div>';
+            try {
+                const result = await new Promise((resolve) => {
+                    cpModule.exec(`git status --porcelain`, { cwd: currentFolderPath }, (err, out, stde) => {
+                        resolve(out || stde || 'No changes');
+                    });
+                });
+                if (!result.trim()) {
+                    gitStatusDiv.innerHTML = '<div class="p-4 text-center text-[#3fb950] text-xs"><span class="material-symbols-rounded text-[20px]">check_circle</span><br>Working tree clean</div>';
+                } else {
+                    const lines = result.trim().split('\n');
+                    gitStatusDiv.innerHTML = lines.map(line => {
+                        const status = line.substring(0, 3);
+                        const file = line.substring(3).trim();
+                        const color = status.includes('A') ? 'text-[#3fb950]' : status.includes('D') ? 'text-[#f85149]' : status.includes('M') ? 'text-[#d29922]' : 'text-[#8b949e]';
+                        return `<div class="git-change p-2 mb-1 rounded hover:bg-[#21262d] text-[11px] font-mono"><span class="${color} font-bold">${status}</span> ${file}</div>`;
+                    }).join('');
+                }
+            } catch (e) {
+                gitStatusDiv.innerHTML = `<div class="p-4 text-center text-[#f85149] text-xs">Not a git repository or git not available</div>`;
+            }
+        };
+    }
+
+    if (btnGitCommit) {
+        btnGitCommit.onclick = () => {
+            if (gitCommitInput) {
+                gitCommitInput.classList.toggle('hidden');
+                if (!gitCommitInput.classList.contains('hidden')) {
+                    gitCommitInput.focus();
+                }
+            }
+        };
+    }
+
+    if (gitCommitInput) {
+        gitCommitInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && gitCommitInput.value.trim()) {
+                const message = gitCommitInput.value.trim();
+                gitCommitInput.value = '';
+                gitCommitInput.classList.add('hidden');
+
+                if (currentFolderPath) {
+                    cpModule.exec(`git commit -m "${message.replace(/"/g, '\\"')}"`, { cwd: currentFolderPath }, (err, out, stde) => {
+                        if (err) {
+                            gitStatusDiv.innerHTML = `<div class="p-4 text-center text-[#f85149] text-xs">Commit failed: ${err.message}</div>`;
+                        } else {
+                            showNotification('Git', `Committed: ${message}`);
+                            if (btnGitStatus) btnGitStatus.click();
+                        }
+                    });
+                }
+            } else if (e.key === 'Escape') {
+                gitCommitInput.classList.add('hidden');
+            }
+        });
+    }
+
+    // --- MENU HANDLERS ---
+    document.getElementById('menu-save-file').onclick = () => { if (isElectron) saveCurrentFile(); };
+    document.getElementById('menu-save-all').onclick = () => {
+        if (!isElectron) return;
+        openFiles.forEach(f => {
+            if (f.isDirty && activeFilePath === f.path) saveCurrentFile();
+        });
+        if (activeFilePath) saveCurrentFile();
+    };
+    document.getElementById('menu-close-file').onclick = () => {
+        if (activeFilePath) {
+            const idx = openFiles.findIndex(f => f.path === activeFilePath);
+            if (idx > -1) openFiles.splice(idx, 1);
+            activeFilePath = openFiles.length > 0 ? openFiles[Math.max(0, idx - 1)].path : null;
+            renderTabs();
+            updateEditorToActiveFile();
+        }
+    };
+    document.getElementById('menu-find').onclick = () => {
+        if (editor) editor.exec('find');
+    };
+    document.getElementById('menu-select-all').onclick = () => {
+        if (editor) editor.selectAll();
+    };
+    document.getElementById('menu-increase-font').onclick = () => {
+        if (editor) {
+            const current = parseInt(editor.getFontSize());
+            editor.setFontSize(current + 2);
+        }
+    };
+    document.getElementById('menu-decrease-font').onclick = () => {
+        if (editor) {
+            const current = parseInt(editor.getFontSize());
+            editor.setFontSize(Math.max(8, current - 2));
+        }
+    };
+    document.getElementById('menu-toggle-markdown').onclick = () => {
+        const modal = document.getElementById('markdown-preview-modal');
+        const content = document.getElementById('markdown-preview-content');
+        if (modal && content) {
+            if (modal.classList.contains('hidden')) {
+                const currentContent = activeFilePath ? openFiles.find(f => f.path === activeFilePath)?.content || '' : '';
+                content.innerHTML = DOMPurify.sanitize(marked.parse(currentContent || '# Ventarys IDX\n\nOpen a file with markdown content to preview.'));
+                modal.classList.remove('hidden');
+            } else {
+                modal.classList.add('hidden');
+            }
+        }
+    };
+    document.getElementById('menu-toggle-fullscreen').onclick = () => {
+        if (!document.fullscreenElement) {
+            document.documentElement.requestFullscreen();
+        } else {
+            document.exitFullscreen();
+        }
+    };
+    document.getElementById('menu-about').onclick = () => {
+        document.getElementById('about-modal').classList.remove('hidden');
+    };
+    document.getElementById('btn-close-about').onclick = () => {
+        document.getElementById('about-modal').classList.add('hidden');
+    };
+    document.getElementById('btn-close-markdown-preview').onclick = () => {
+        document.getElementById('markdown-preview-modal').classList.add('hidden');
+    };
+    document.getElementById('menu-export-chat').onclick = () => {
+        const msgs = getMessages().filter(m => m.role !== 'system' && m.role !== 'tool');
+        if (msgs.length === 0) return;
+        let exportText = '# Ventarys IDX Chat Export\n\n';
+        msgs.forEach(m => {
+            const role = m.role === 'user' ? 'User' : 'Agent';
+            const content = typeof m.content === 'string' ? m.content : (m.content?.[0]?.text || '');
+            exportText += `## ${role}\n${content}\n\n---\n\n`;
+        });
+        const blob = new Blob([exportText], { type: 'text/markdown' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `ventarys-chat-${new Date().toISOString().split('T')[0]}.md`;
+        a.click();
+        URL.revokeObjectURL(url);
+    };
+    document.getElementById('menu-git-status').onclick = () => {
+        switchTab('git', document.getElementById('tab-git'));
+        if (btnGitStatus) btnGitStatus.click();
+    };
+    document.getElementById('menu-git-commit').onclick = () => {
+        switchTab('git', document.getElementById('tab-git'));
+        if (btnGitCommit) btnGitCommit.click();
+    };
+    document.getElementById('menu-terminal-clear').onclick = () => {
+        if (term) term.clear();
+    };
+    document.getElementById('menu-auto-retry').onclick = () => {
+        // Auto retry is always enabled
+        showNotification('AI Settings', 'Auto Retry is always enabled (max 5 retries)');
+    };
+    document.getElementById('menu-auto-reload').onclick = () => {
+        autoReloadEnabled = !autoReloadEnabled;
+        localStorage.setItem('ventarys_autoReload', autoReloadEnabled);
+        const icon = document.getElementById('icon-auto-reload');
+        const btn = document.getElementById('menu-auto-reload');
+        if (autoReloadEnabled) {
+            icon.textContent = 'check_circle';
+            btn.innerHTML = '<span class="material-symbols-rounded text-[16px]" id="icon-auto-reload">check_circle</span> Auto Reload (Enabled)';
+        } else {
+            icon.textContent = 'cancel';
+            btn.innerHTML = '<span class="material-symbols-rounded text-[16px]" id="icon-auto-reload">cancel</span> Auto Reload (Disabled)';
+        }
+        showNotification('AI Settings', `Auto Reload ${autoReloadEnabled ? 'Enabled' : 'Disabled'}`);
+    };
+    document.getElementById('menu-auto-accept').onclick = () => {
+        autoReloadEnabled = !autoReloadEnabled;
+        localStorage.setItem('ventarys_autoReload', autoReloadEnabled);
+        const icon = document.getElementById('icon-auto-accept');
+        const btn = document.getElementById('menu-auto-accept');
+        if (autoReloadEnabled) {
+            icon.textContent = 'check_circle';
+            btn.innerHTML = '<span class="material-symbols-rounded text-[16px]" id="icon-auto-accept">check_circle</span> Auto Accept Changes (Enabled)';
+        } else {
+            icon.textContent = 'cancel';
+            btn.innerHTML = '<span class="material-symbols-rounded text-[16px]" id="icon-auto-accept">cancel</span> Auto Accept Changes (Disabled)';
+        }
+        showNotification('AI Settings', `Auto Accept ${autoReloadEnabled ? 'Enabled' : 'Disabled'}`);
+    };
     document.getElementById('menu-open-folder').onclick = () => document.getElementById('folder-input').click();
     document.getElementById('folder-input').addEventListener('change', handleFolderSelect);
-    document.getElementById('btn-refresh-folder').onclick = () => { if (currentFolderPath) { const u = document.getElementById('file-list'); u.innerHTML = ''; loadFolderTree(currentFolderPath, u); } };
+    document.getElementById('btn-refresh-folder').onclick = () => { if (currentFolderPath) refreshFolderTree(); };
 
     document.getElementById('api-key-agnes').value = state.keys.agnes;
     document.getElementById('api-key-aqua').value = state.keys.aqua;
@@ -383,28 +1131,194 @@ function init() {
     updateCtx();
     updatePuterUser();
     checkForUpdates(); // Check for updates on startup
+
+    // Setup change accept/reject buttons
+    setupChangeButtons();
+
+    // Start file change polling for auto-reload
+    setInterval(() => {
+        if (isElectron && openFiles.length > 0) {
+            trackFileChanges();
+        }
+    }, 2000); // Check every 2 seconds
 }
 
-function handleFolderSelect(e) { if (!isElectron) return alert("Electron environment required."); const f = e.target.files[0]; if (f && f.path) { const rr = f.webkitRelativePath.split('/')[0], ae = f.path.indexOf(path.normalize(rr)); currentFolderPath = ae !== -1 ? path.join(f.path.substring(0, ae), rr) : path.dirname(f.path); document.getElementById('folder-name-label').textContent = path.basename(currentFolderPath); document.getElementById('btn-refresh-folder').classList.remove('hidden'); document.getElementById('btn-vscode').classList.remove('hidden'); const u = document.getElementById('file-list'); u.innerHTML = ''; loadFolderTree(currentFolderPath, u); if (ptyProcess) { ptyProcess.stdin.write(`cd "${currentFolderPath}"\r\nclear\r\n`); setTimeout(() => term.scrollToBottom(), 100); } } }
+function handleFolderSelect(e) {
+    if (!isElectron) return alert("Electron environment required.");
+    const f = e.target.files[0];
+    if (f && f.path) {
+        const rr = f.webkitRelativePath.split('/')[0];
+        const ae = f.path.indexOf(path.normalize(rr));
+        currentFolderPath = ae !== -1 ? path.join(f.path.substring(0, ae), rr) : path.dirname(f.path);
 
-function loadFolderTree(fp, cu) {
+        document.getElementById('folder-name-label').textContent = path.basename(currentFolderPath);
+        document.getElementById('btn-refresh-folder').classList.remove('hidden');
+        document.getElementById('btn-vscode').classList.remove('hidden');
+
+        const u = document.getElementById('file-list');
+        u.innerHTML = '';
+
+        // Reset state
+        fileCache.clear();
+        cacheOrder = [];
+        openFiles = [];
+        activeFilePath = null;
+        excludedDirs = new Set(['node_modules', 'bower_components', 'dist', 'build', '.git', '.svn', 'vendor', '__pycache__', '.next', '.nuxt', '.cache', 'coverage', '.idea', '.vscode', '.settings', 'obj', 'Debug', 'Release', '.terraform', 'venv', '.venv', 'env', '.env']);
+
+        // Load .gitignore patterns
+        loadGitignore();
+
+        // Show loading state
+        u.innerHTML = '<div class="p-4 text-center text-[#8b949e] text-xs"><span class="animate-spin material-symbols-rounded text-[20px]">sync</span><br>Loading project...</div>';
+
+        // Load tree with progress
+        setTimeout(() => loadFolderTreeOptimized(currentFolderPath, u, 0), 50);
+
+        if (ptyProcess) {
+            ptyProcess.stdin.write(`cd "${currentFolderPath}"\r\nclear\r\n`);
+            setTimeout(() => term.scrollToBottom(), 100);
+        }
+    }
+}
+
+function loadGitignore() {
     try {
-        const files = fs.readdirSync(fp, { withFileTypes: true });
-        files.sort((a, b) => { if (a.isDirectory() && !b.isDirectory()) return -1; if (!a.isDirectory() && b.isDirectory()) return 1; return a.name.localeCompare(b.name); });
-        files.forEach(f => {
-            if (f.name.startsWith('.')) return;
-            const li = document.createElement('li');
-            if (f.isDirectory()) {
-                li.innerHTML = `<div class="folder-toggle cursor-pointer hover:bg-gray-200 py-1 px-2 rounded-lg flex items-center gap-2 text-gray-800 font-semibold select-none truncate transition"><span class="material-symbols-rounded text-[16px] text-gray-500">folder</span> ${f.name}</div><ul class="hidden pl-4 border-l-2 border-gray-100 ml-2 mt-1 space-y-1"></ul>`;
-                const td = li.querySelector('.folder-toggle'), cUl = li.querySelector('ul');
-                td.onclick = () => { td.classList.toggle('open'); cUl.classList.toggle('hidden'); if (!cUl.hasChildNodes()) { cUl.innerHTML = ''; loadFolderTree(path.join(fp, f.name), cUl); } };
-            } else {
-                li.innerHTML = `<div class="cursor-pointer hover:bg-gray-200 py-1 pl-6 pr-2 rounded-lg flex items-center gap-2 text-gray-700 truncate select-none transition font-medium">${getFileIcon(f.name)} <span class="truncate mt-0.5">${f.name}</span></div>`;
-                li.onclick = () => openFile(path.join(fp, f.name));
-            }
-            cu.appendChild(li);
+        const gitignorePath = path.join(currentFolderPath, '.gitignore');
+        if (fs.existsSync(gitignorePath)) {
+            const content = fs.readFileSync(gitignorePath, 'utf8');
+            gitignoreRawPatterns = content.split('\n').map(l => l.trim()).filter(l => l && !l.startsWith('#'));
+
+            // Convert glob patterns to simple string set
+            gitignorePatterns = new Set();
+            gitignoreRawPatterns.forEach(pattern => {
+                if (pattern.endsWith('/')) {
+                    gitignorePatterns.add(pattern.slice(0, -1));
+                } else {
+                    gitignorePatterns.add(pattern);
+                }
+            });
+        }
+    } catch (e) { /* Ignore gitignore errors */ }
+}
+
+function shouldExclude(name, isDir) {
+    if (excludedDirs.has(name)) return true;
+    if (isDir && name.startsWith('.')) return true;
+    if (excludedFiles.has(name)) return true;
+    if (gitignorePatterns.has(name)) return true;
+    return false;
+}
+
+function loadFolderTreeOptimized(fp, cu, depth) {
+    if (depth > maxDirectoryDepth) return;
+    if (folderLoadProgress.cancelled) return;
+
+    try {
+        const entries = fs.readdirSync(fp, { withFileTypes: true });
+        const totalItems = entries.length;
+        folderLoadProgress.total = totalItems;
+
+        // Sort: directories first, then alphabetically
+        entries.sort((a, b) => {
+            if (a.isDirectory() && !b.isDirectory()) return -1;
+            if (!a.isDirectory() && b.isDirectory()) return 1;
+            return a.name.localeCompare(b.name);
         });
-    } catch (err) { console.error(err); }
+
+        // Use DocumentFragment for batch DOM insertion
+        const fragment = document.createDocumentFragment();
+
+        entries.forEach(f => {
+            if (shouldExclude(f.name, f.isDirectory())) return;
+
+            const li = document.createElement('li');
+            li.className = 'file-tree-item';
+            li.dataset.fullPath = path.join(fp, f.name);
+            li.dataset.isDir = f.isDirectory();
+
+            if (f.isDirectory()) {
+                const indent = depth * 12 + 8;
+                li.innerHTML = `
+                    <div class="folder-toggle cursor-pointer hover:bg-[#21262d] py-1 px-2 rounded-lg flex items-center gap-2 text-[#e6edf3] font-medium select-none truncate transition text-[13px]" style="padding-left: ${indent}px">
+                        <span class="material-symbols-rounded text-[16px] text-[#8b949e]">folder</span>
+                        <span class="truncate">${f.name}</span>
+                        <span class="folder-count text-[10px] text-[#8b949e] hidden">0</span>
+                    </div>
+                    <ul class="hidden pl-2 border-l border-[#30363d] ml-1 mt-0.5 space-y-0.5"></ul>`;
+
+                const td = li.querySelector('.folder-toggle');
+                const cUl = li.querySelector('ul');
+                const countSpan = li.querySelector('.folder-count');
+
+                td.onclick = (e) => {
+                    e.stopPropagation();
+                    const isOpen = !cUl.classList.contains('hidden');
+
+                    if (isOpen) {
+                        cUl.classList.add('hidden');
+                        td.classList.remove('text-[#58a6ff]');
+                    } else {
+                        cUl.classList.remove('hidden');
+                        td.classList.add('text-[#58a6ff]');
+
+                        // Lazy load: only load if empty
+                        if (!cUl.hasChildNodes()) {
+                            cUl.innerHTML = '<div class="p-1 text-[10px] text-[#8b949e]">Loading...</div>';
+                            setTimeout(() => {
+                                cUl.innerHTML = '';
+                                loadFolderTreeOptimized(path.join(fp, f.name), cUl, depth + 1);
+                                updateFolderCount(cUl, countSpan);
+                            }, 10);
+                        } else {
+                            updateFolderCount(cUl, countSpan);
+                        }
+                    }
+                };
+            } else {
+                const indent = depth * 12 + 16;
+                li.innerHTML = `
+                    <div class="file-toggle cursor-pointer hover:bg-[#21262d] py-1 px-2 rounded-lg flex items-center gap-2 text-[#e6edf3] truncate select-none transition text-[13px]" style="padding-left: ${indent}px">
+                        ${getFileIcon(f.name)}
+                        <span class="truncate">${f.name}</span>
+                    </div>`;
+
+                li.querySelector('.file-toggle').onclick = () => openFile(path.join(fp, f.name));
+            }
+
+            fragment.appendChild(li);
+        });
+
+        cu.appendChild(fragment);
+
+    } catch (err) {
+        console.error('[File Handler] Error loading folder:', err);
+    }
+}
+
+function updateFolderCount(ul, countSpan) {
+    if (!countSpan || !ul) return;
+    const count = ul.querySelectorAll('.file-tree-item').length;
+    if (count > 0) {
+        countSpan.textContent = count;
+        countSpan.classList.remove('hidden');
+    }
+}
+
+// Debounced folder tree loading for refresh
+function refreshFolderTree() {
+    if (folderLoadTimer) clearTimeout(folderLoadTimer);
+    folderLoadTimer = setTimeout(() => {
+        if (currentFolderPath) {
+            const u = document.getElementById('file-list');
+            u.innerHTML = '';
+            folderLoadProgress.cancelled = true;
+            setTimeout(() => {
+                folderLoadProgress.cancelled = false;
+                folderLoadProgress.current = 0;
+                loadFolderTreeOptimized(currentFolderPath, u, 0);
+            }, 100);
+        }
+    }, 300);
 }
 
 function handleFileUpload(e) { Array.from(e.target.files).forEach(f => { const r = new FileReader(); r.onload = ev => { state.attachments.push({ name: f.name, type: f.type.startsWith('image/') ? 'image' : 'file', data: ev.target.result, rawFile: f }); renderAttachmentsPreview(); updateSendButtonState(); }; if (f.type.startsWith('image/')) r.readAsDataURL(f); else r.readAsText(f); }); e.target.value = ''; }
@@ -489,7 +1403,25 @@ async function runLocalTool(c) {
     } else if (n === 'read_file') {
         try { return fs.readFileSync(path.resolve(cwd, a.file_path), 'utf8').substring(0, 8000); } catch (e) { return `Error: ${e.message}`; }
     } else if (n === 'write_file') {
-        try { const tp = path.resolve(cwd, a.file_path); fs.writeFileSync(tp, a.content, 'utf8'); return `File successfully saved at ${tp}`; } catch (e) { return `Write error: ${e.message}`; }
+        try {
+            const tp = path.resolve(cwd, a.file_path);
+            fs.writeFileSync(tp, a.content, 'utf8');
+
+            // Track this file change for auto-reload
+            const existingFile = openFiles.find(f => f.path === tp);
+            if (existingFile) {
+                existingFile.content = a.content;
+                existingFile.isDirty = false;
+                if (activeFilePath === tp && editor) {
+                    isEditorUpdating = true;
+                    editor.setValue(a.content, -1);
+                    isEditorUpdating = false;
+                    renderTabs();
+                }
+            }
+
+            return `File successfully saved at ${tp}`;
+        } catch (e) { return `Write error: ${e.message}`; }
     } else if (n === 'ide_live_edit') {
         if (activeFilePath && path.normalize(activeFilePath) === path.normalize(a.file_path) && editor) {
             try {
@@ -575,7 +1507,7 @@ async function handleSendOrStop(iAR = false) {
 
     try {
         const msgs = getMessages();
-        const res = await fetch(`${providers[pK].url}/chat/completions`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${aK}` }, body: JSON.stringify({ model: rM, messages: [getSystemPrompt(), ...msgs], stream: true, tools: toolsDefinition, tool_choice: "auto" }), signal: state.abortController.signal });
+        const res = await fetchWithRetry(`${providers[pK].url}/chat/completions`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${aK}` }, body: JSON.stringify({ model: rM, messages: [getSystemPrompt(), ...msgs], stream: true, tools: toolsDefinition, tool_choice: "auto" }), signal: state.abortController.signal });
         if (!res.ok) throw new Error(`HTTP network error ${res.status}`);
         const rd = res.body.getReader(), dc = new TextDecoder("utf-8");
         let dn = false, bf = "", fr = "", tcD = {};

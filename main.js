@@ -1,10 +1,12 @@
 // Archivo principal de Electron
-const { app, BrowserWindow } = require('electron');
+const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
+
+let mainWindow = null;
 
 function createWindow() {
     // Crear la ventana del navegador.
-    const mainWindow = new BrowserWindow({
+    mainWindow = new BrowserWindow({
         width: 1100,
         height: 800,
         minWidth: 800,
@@ -27,6 +29,14 @@ function createWindow() {
 
     // Cargar el index.html de la aplicación.
     mainWindow.loadFile('index.html');
+
+    // Handle quit app request from updater
+    ipcMain.on('quit-app', () => {
+        console.log('Quit app requested by updater');
+        if (mainWindow) {
+            mainWindow.close();
+        }
+    });
 }
 
 // Este método se llamará cuando Electron haya finalizado la inicialización
