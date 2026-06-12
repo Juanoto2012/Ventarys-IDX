@@ -31,6 +31,120 @@ if (typeof require !== 'undefined') {
     } catch (e) { console.warn("Running in strict browser environment."); }
 }
 
+// --- CUSTOM PROVIDERS SYSTEM ---
+let customProviders = JSON.parse(localStorage.getItem('ventarys_customProviders') || '[]');
+let editingProviderIndex = -1; // -1 means adding new, >= 0 means editing
+
+function saveCustomProviders() {
+    localStorage.setItem('ventarys_customProviders', JSON.stringify(customProviders));
+}
+
+function renderCustomProvidersList() {
+    const container = document.getElementById('custom-providers-list');
+    if (!container) return;
+
+    if (customProviders.length === 0) {
+        container.innerHTML = '<div class="text-[10px] text-[#8b949e] text-center py-2">No custom providers added</div>';
+        return;
+    }
+
+    container.innerHTML = customProviders.map((cp, i) => `
+        <div class="flex items-center justify-between bg-[#0d1117] border border-[#30363d] rounded-lg px-3 py-2 text-[11px]">
+            <div class="flex items-center gap-2 truncate flex-1">
+                <span class="material-symbols-rounded text-[14px] text-[#8b949e]">cloud</span>
+                <span class="truncate font-medium text-[#e6edf3]">${cp.name}</span>
+                <span class="text-[#8b949e] truncate max-w-[120px]">${cp.url}</span>
+                ${cp.noKey ? '<span class="text-[10px] text-[#3fb950] bg-[rgba(63,185,80,0.1)] px-1.5 py-0.5 rounded">No Key</span>' : '<span class="text-[10px] text-[#8b949e]">Key: ******</span>'}
+            </div>
+            <div class="flex items-center gap-1 shrink-0">
+                <button onclick="editCustomProvider(${i})" class="hover:text-[#58a6ff] transition p-1" title="Edit">
+                    <span class="material-symbols-rounded text-[14px]">edit</span>
+                </button>
+                <button onclick="deleteCustomProvider(${i})" class="hover:text-[#f85149] transition p-1" title="Delete">
+                    <span class="material-symbols-rounded text-[14px]">delete</span>
+                </button>
+            </div>
+        </div>
+    `).join('');
+}
+
+window.editCustomProvider = function (index) {
+    editingProviderIndex = index;
+    const cp = customProviders[index];
+    document.getElementById('cp-name').value = cp.name;
+    document.getElementById('cp-url').value = cp.url;
+    document.getElementById('cp-no-key').checked = cp.noKey || false;
+    document.getElementById('cp-key').value = cp.key || '';
+    toggleKeyInput();
+    document.getElementById('custom-provider-form').classList.remove('hidden');
+    document.getElementById('btn-save-custom-provider').innerHTML = '<span class="material-symbols-rounded text-[14px]">save</span> Update';
+};
+
+window.deleteCustomProvider = function (index) {
+    if (confirm(`Delete provider "${customProviders[index].name}"?`)) {
+        customProviders.splice(index, 1);
+        saveCustomProviders();
+        renderCustomProvidersList();
+        fetchModels(false); // Re-fetch models
+    }
+};
+
+function toggleKeyInput() {
+    const noKey = document.getElementById('cp-no-key').checked;
+    const keyContainer = document.getElementById('cp-key-container');
+    const label = document.querySelector('#cp-no-key').nextElementSibling;
+    if (keyContainer) keyContainer.style.display = noKey ? 'none' : 'block';
+    if (label) label.textContent = noKey ? 'No API key required' : 'Require API key';
+}
+
+function resetProviderForm() {
+    editingProviderIndex = -1;
+    document.getElementById('cp-name').value = '';
+    document.getElementById('cp-url').value = '';
+    document.getElementById('cp-no-key').checked = false;
+    document.getElementById('cp-key').value = '';
+    document.getElementById('custom-provider-form').classList.add('hidden');
+    document.getElementById('btn-save-custom-provider').innerHTML = '<span class="material-symbols-rounded text-[14px]">save</span> Save';
+    toggleKeyInput();
+}
+
+function saveCustomProvider() {
+    const name = document.getElementById('cp-name').value.trim();
+    let url = document.getElementById('cp-url').value.trim();
+    const noKey = document.getElementById('cp-no-key').checked;
+    const key = document.getElementById('cp-key').value.trim();
+
+    if (!name || !url) {
+        showNotification('Error', 'Provider name and URL are required');
+        return;
+    }
+
+    // Ensure URL ends with /v1
+    if (!url.endsWith('/v1')) {
+        url = url.replace(/\/+$/, '') + '/v1';
+    }
+
+    if (!noKey && !key) {
+        showNotification('Error', 'API key is required for this provider');
+        return;
+    }
+
+    const provider = { name, url, noKey: noKey || false, key: key || '' };
+
+    if (editingProviderIndex >= 0) {
+        customProviders[editingProviderIndex] = provider;
+        showNotification('Provider Updated', `${name} has been updated`);
+    } else {
+        customProviders.push(provider);
+        showNotification('Provider Added', `${name} has been added`);
+    }
+
+    saveCustomProviders();
+    renderCustomProvidersList();
+    resetProviderForm();
+    fetchModels(false); // Re-fetch models including custom providers
+}
+
 // --- AUTO UPDATER SYSTEM FOR PORTABLE .EXE ---
 // Parse version string to comparable array of numbers
 function parseVersion(versionStr) {
@@ -289,11 +403,64 @@ let filteredFileTree = [];
 // Progress tracking
 let folderLoadProgress = { current: 0, total: 0, cancelled: false };
 
-// --- AUTO RETRY SYSTEM ---
-const MAX_RETRIES = 5;
-const RETRY_DELAY = 1000; // 1 second base delay
-let retryCount = 0;
-let pendingApiRequest = null;
+// --- OUTPUT PANEL / AI CONSOLE SYSTEM ---
+let outputPanelVisible = false;
+let outputLines = [];
+const MAX_OUTPUT_LINES = 1000;
+
+function toggleOutputPanel() {
+    const panel = document.getElementById('panel-output');
+    if (panel) {
+        outputPanelVisible = !outputPanelVisible;
+        panel.style.display = outputPanelVisible ? 'flex' : 'none';
+        if (outputPanelVisible && term) {
+            setTimeout(() => term.fitAddon.fit(), 50);
+        }
+    }
+}
+
+function clearOutput() {
+    outputLines = [];
+    const content = document.getElementById('output-content');
+    if (content) {
+        content.innerHTML = '<div class="text-[#8b949e] text-xs italic p-2">Output console cleared. AI actions will appear here.</div>';
+    }
+}
+
+function addOutputLine(text, type = 'system') {
+    const timestamp = new Date().toLocaleTimeString();
+    outputLines.push({ text, type, timestamp });
+
+    // Remove old lines if over max
+    while (outputLines.length > MAX_OUTPUT_LINES) {
+        outputLines.shift();
+    }
+
+    const content = document.getElementById('output-content');
+    if (!content) return;
+
+    // Only add if not already showing the cleared message
+    if (outputLines.length === 1) {
+        content.innerHTML = '';
+    }
+
+    const line = document.createElement('div');
+    line.className = `output-line ${type}`;
+    line.textContent = `[${timestamp}] ${text}`;
+    content.appendChild(line);
+    content.scrollTop = content.scrollHeight;
+
+    // Keep DOM manageable - only keep last 100 lines in DOM
+    const allLines = content.querySelectorAll('.output-line');
+    if (allLines.length > 100) {
+        Array.from(allLines).slice(0, allLines.length - 100).forEach(l => l.remove());
+    }
+}
+
+// Make output functions available globally
+window.toggleOutputPanel = toggleOutputPanel;
+window.clearOutput = clearOutput;
+window.addOutputLine = addOutputLine;
 
 // --- AUTO RELOAD SYSTEM ---
 let fileSnapshotMap = new Map(); // Track file content hashes for change detection
@@ -424,15 +591,35 @@ function setupChangeButtons() {
     }
 }
 
+// --- CONFIGURATION CONSTANTS ---
+let MAX_RETRIES = parseInt(localStorage.getItem('ventarys_maxRetries')) || 5;
+let RETRY_DELAY = parseInt(localStorage.getItem('ventarys_retryDelay')) || 1000;
+let AUTO_RELOAD_INTERVAL = parseInt(localStorage.getItem('ventarys_autoReloadInterval')) || 2000;
+let LOG_AI_OUTPUT = localStorage.getItem('ventarys_logOutput') !== 'false';
+
+// Load agent config if modal was opened
+function loadAgentConfig() {
+    const mr = document.getElementById('config-max-retries');
+    const rd = document.getElementById('config-retry-delay');
+    const ai = document.getElementById('config-autoreload-interval');
+    const lo = document.getElementById('config-log-output');
+    if (mr) mr.value = MAX_RETRIES;
+    if (rd) rd.value = RETRY_DELAY;
+    if (ai) ai.value = AUTO_RELOAD_INTERVAL;
+    if (lo) lo.checked = LOG_AI_OUTPUT;
+}
+
 // --- AUTO RETRY API FETCH ---
 async function fetchWithRetry(url, options, maxRetries = MAX_RETRIES) {
     let lastError;
+    addOutputLine(`🌐 API Request: ${url.substring(0, 80)}...`, 'system');
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
         try {
             // Show retry indicator if not first attempt
             if (attempt > 0) {
                 showRetryIndicator(attempt, maxRetries);
+                addOutputLine(`🔄 Retry attempt ${attempt}/${maxRetries}...`, 'warning');
                 const delay = RETRY_DELAY * Math.pow(2, attempt - 1);
                 await new Promise(resolve => setTimeout(resolve, delay));
             }
@@ -446,13 +633,16 @@ async function fetchWithRetry(url, options, maxRetries = MAX_RETRIES) {
 
             // Hide retry indicator on success
             hideRetryIndicator();
+            addOutputLine(`✓ API request successful`, 'success');
             return response;
         } catch (error) {
             lastError = error;
             console.warn(`API Request failed (attempt ${attempt + 1}/${maxRetries + 1}):`, error.message);
+            addOutputLine(`✗ Request failed (${attempt + 1}/${maxRetries + 1}): ${error.message}`, 'error');
 
             // Don't retry on abort
             if (error.name === 'AbortError') {
+                addOutputLine(`⛔ Request aborted by user`, 'warning');
                 throw error;
             }
         }
@@ -460,6 +650,7 @@ async function fetchWithRetry(url, options, maxRetries = MAX_RETRIES) {
 
     // All retries exhausted
     hideRetryIndicator();
+    addOutputLine(`✗ All retries exhausted. Request failed.`, 'error');
     throw new Error(`API request failed after ${maxRetries + 1} attempts: ${lastError.message}`);
 }
 
@@ -498,6 +689,15 @@ function initTerminal() {
 }
 
 const providers = { agnes: { url: 'https://apihub.agnes-ai.com/v1', name: 'Agnes' }, aqua: { url: 'https://api.aquadevs.com/v1', name: 'Aqua' } };
+
+// Get all providers including custom ones
+function getAllProviders() {
+    const allProviders = { ...providers };
+    customProviders.forEach((cp, i) => {
+        allProviders[`custom_${i}`] = { url: cp.url, name: cp.name, noKey: cp.noKey, key: cp.key };
+    });
+    return allProviders;
+}
 const state = { keys: { agnes: localStorage.getItem('ventarys_key_agnes') || '', aqua: localStorage.getItem('ventarys_key_aqua') || '' }, modelId: localStorage.getItem('ventarys_modelId') || '', sessions: JSON.parse(localStorage.getItem('ventarys_sessions') || '[]'), currentSessionId: localStorage.getItem('ventarys_currentSessionId') || null, attachments: [], isGenerating: false, abortController: null };
 const els = { chatContainer: document.getElementById('chat-container'), chatInput: document.getElementById('chat-input'), btnSend: document.getElementById('btn-send'), sendIcon: document.getElementById('send-icon'), emptyState: document.getElementById('empty-state'), modal: document.getElementById('settings-modal'), modelSelect: document.getElementById('model-select'), errorBox: document.getElementById('settings-error'), historyList: document.getElementById('history-list'), attachBtn: document.getElementById('btn-attach'), fileUpload: document.getElementById('file-upload'), attachmentsPreview: document.getElementById('attachments-preview') };
 
@@ -1047,6 +1247,38 @@ function init() {
     document.getElementById('btn-close-markdown-preview').onclick = () => {
         document.getElementById('markdown-preview-modal').classList.add('hidden');
     };
+    document.getElementById('btn-close-shortcuts').onclick = () => {
+        document.getElementById('shortcuts-modal').classList.add('hidden');
+    };
+    document.getElementById('menu-shortcuts').onclick = () => {
+        document.getElementById('shortcuts-modal').classList.remove('hidden');
+    };
+    document.getElementById('btn-close-agent-config').onclick = () => {
+        document.getElementById('agent-config-modal').classList.add('hidden');
+    };
+    document.getElementById('menu-agent-config').onclick = () => {
+        document.getElementById('agent-config-modal').classList.remove('hidden');
+    };
+    document.getElementById('btn-save-agent-config').onclick = () => {
+        const maxRetries = parseInt(document.getElementById('config-max-retries').value) || 5;
+        const retryDelay = parseInt(document.getElementById('config-retry-delay').value) || 1000;
+        const autoReloadInterval = parseInt(document.getElementById('config-autoreload-interval').value) || 2000;
+        const logOutput = document.getElementById('config-log-output').checked;
+
+        localStorage.setItem('ventarys_maxRetries', maxRetries);
+        localStorage.setItem('ventarys_retryDelay', retryDelay);
+        localStorage.setItem('ventarys_autoReloadInterval', autoReloadInterval);
+        localStorage.setItem('ventarys_logOutput', logOutput);
+
+        MAX_RETRIES = maxRetries;
+        RETRY_DELAY = retryDelay;
+
+        document.getElementById('agent-config-modal').classList.add('hidden');
+        showNotification('Configuration', 'Agent settings saved');
+    };
+    document.getElementById('btn-cancel-agent-config').onclick = () => {
+        document.getElementById('agent-config-modal').classList.add('hidden');
+    };
     document.getElementById('menu-export-chat').onclick = () => {
         const msgs = getMessages().filter(m => m.role !== 'system' && m.role !== 'tool');
         if (msgs.length === 0) return;
@@ -1072,9 +1304,218 @@ function init() {
         switchTab('git', document.getElementById('tab-git'));
         if (btnGitCommit) btnGitCommit.click();
     };
+    document.getElementById('menu-git-branch').onclick = () => {
+        if (!currentFolderPath) {
+            showNotification('No Folder', 'Open a folder first');
+            return;
+        }
+        cpModule.exec(`git branch -a`, { cwd: currentFolderPath }, (err, out, stde) => {
+            const result = out || stde || 'No branches';
+            const lines = result.trim().split('\n').filter(l => l.trim());
+            let branchHtml = '<div class="p-4 space-y-1">';
+            lines.forEach(line => {
+                const isCurrent = line.startsWith('*');
+                const branchName = line.replace('* ', '').trim();
+                branchHtml += `<div class="git-branch-item p-2 rounded text-[11px] font-mono ${isCurrent ? 'bg-[rgba(56,139,253,0.15)] text-[#58a6ff] font-bold' : 'text-[#8b949e] hover:bg-[#21262d]'}">${isCurrent ? '<span class="material-symbols-rounded text-[14px] mr-1">radio_button_checked</span>' : '<span class="material-symbols-rounded text-[14px] mr-1 text-[#484f58]">radio_button_unchecked</span>'}${branchName}</div>`;
+            });
+            branchHtml += '</div>';
+            const gitStatusDiv = document.getElementById('git-status');
+            if (gitStatusDiv) {
+                gitStatusDiv.innerHTML = branchHtml;
+            }
+        });
+    };
     document.getElementById('menu-terminal-clear').onclick = () => {
         if (term) term.clear();
     };
+    document.getElementById('menu-toggle-output').onclick = () => {
+        toggleOutputPanel();
+    };
+    document.getElementById('menu-clear-output').onclick = () => {
+        clearOutput();
+    };
+    document.getElementById('btn-output-clear').onclick = () => {
+        clearOutput();
+    };
+    document.getElementById('btn-output-close').onclick = () => {
+        toggleOutputPanel();
+    };
+
+    // Tools menu handlers
+    document.getElementById('menu-run-code').onclick = () => {
+        if (!activeFilePath) {
+            showNotification('No File', 'Open a file first to run it.');
+            return;
+        }
+        const ext = activeFilePath.split('.').pop().toLowerCase();
+        let cmd = '';
+        if (['js', 'ts', 'jsx', 'tsx'].includes(ext)) cmd = `node "${activeFilePath}"`;
+        else if (ext === 'py') cmd = `python "${activeFilePath}"`;
+        else if (ext === 'html') {
+            // Open HTML in browser
+            if (isElectron) {
+                const { shell } = require('electron');
+                shell.openExternal('file://' + activeFilePath);
+            } else {
+                window.open('file://' + activeFilePath, '_blank');
+            }
+            return;
+        }
+        else {
+            showNotification('Run', `Use terminal to run .${ext} files`);
+            return;
+        }
+        if (cmd && term && ptyProcess) {
+            ptyProcess.stdin.write(`${cmd}\r\n`);
+            term.focus();
+        }
+    };
+
+    document.getElementById('menu-run-terminal').onclick = () => {
+        if (!activeFilePath) {
+            showNotification('No File', 'Open a file first.');
+            return;
+        }
+        const ext = activeFilePath.split('.').pop().toLowerCase();
+        let cmd = '';
+        if (['js', 'ts', 'jsx', 'tsx'].includes(ext)) cmd = `node "${activeFilePath}"`;
+        else if (ext === 'py') cmd = `python "${activeFilePath}"`;
+        else if (ext === 'java') cmd = `javac "${activeFilePath}" && java ${path.basename(activeFilePath, '.java')}`;
+        else if (ext === 'c') cmd = `gcc "${activeFilePath}" -o output && ./output`;
+        else if (ext === 'cpp' || ext === 'cc' || ext === 'cxx') cmd = `g++ "${activeFilePath}" -o output && ./output`;
+        else cmd = `echo "Cannot run .${ext} files directly"`;
+
+        if (cmd && term && ptyProcess) {
+            addOutputLine(`▶ Running ${path.basename(activeFilePath)}...`, 'info');
+            ptyProcess.stdin.write(`${cmd}\r\n`);
+            term.focus();
+        }
+    };
+
+    document.getElementById('menu-copy-path').onclick = () => {
+        if (activeFilePath) {
+            navigator.clipboard.writeText(activeFilePath);
+            showNotification('Copied', 'File path copied to clipboard');
+        }
+    };
+
+    document.getElementById('menu-reveal-explorer').onclick = () => {
+        if (activeFilePath && isElectron) {
+            const { shell } = require('electron');
+            shell.showItemInFolder(activeFilePath);
+        }
+    };
+
+    // View menu handlers
+    document.getElementById('menu-toggle-minimap').onclick = () => {
+        if (editor) {
+            const minimap = editor.getOption('enableMinimap');
+            editor.setOption('enableMinimap', !minimap);
+            showNotification('Minimap', !minimap ? 'Minimap enabled' : 'Minimap disabled');
+        }
+    };
+
+    document.getElementById('menu-word-wrap').onclick = () => {
+        if (editor) {
+            const currentWrap = editor.getOption('wordWrap');
+            editor.setOption('wordWrap', !currentWrap);
+            showNotification('Word Wrap', !currentWrap ? 'Enabled' : 'Disabled');
+        }
+    };
+
+    document.getElementById('menu-sticky-scroll').onclick = () => {
+        if (editor) {
+            const current = editor.getOption('stickyScroll');
+            editor.setOption('stickyScroll', !current);
+            showNotification('Sticky Scroll', !current ? 'Enabled' : 'Disabled');
+        }
+    };
+
+    // Help menu handlers
+    document.getElementById('menu-docs').onclick = () => {
+        if (isElectron) {
+            const { shell } = require('electron');
+            shell.openExternal('https://github.com/Juanoto2012/Ventarys-IDX');
+        } else {
+            window.open('https://github.com/Juanoto2012/Ventarys-IDX', '_blank');
+        }
+    };
+    document.getElementById('menu-feedback').onclick = () => {
+        if (isElectron) {
+            const { shell } = require('electron');
+            shell.openExternal('https://github.com/Juanoto2012/Ventarys-IDX/discussions');
+        } else {
+            window.open('https://github.com/Juanoto2012/Ventarys-IDX/discussions', '_blank');
+        }
+    };
+    document.getElementById('menu-report-bug').onclick = () => {
+        if (isElectron) {
+            const { shell } = require('electron');
+            shell.openExternal('https://github.com/Juanoto2012/Ventarys-IDX/issues');
+        } else {
+            window.open('https://github.com/Juanoto2012/Ventarys-IDX/issues', '_blank');
+        }
+    };
+    document.getElementById('menu-undo').onclick = () => {
+        if (editor) editor.exec('undo');
+    };
+    document.getElementById('menu-redo').onclick = () => {
+        if (editor) editor.exec('redo');
+    };
+
+    // AI menu handlers
+    document.getElementById('menu-agent-config').onclick = () => {
+        showNotification('Agent Config', 'Configure agent behavior in Settings');
+    };
+
+    document.getElementById('menu-clear-context').onclick = () => {
+        if (confirm('Clear all chat messages and context?')) {
+            const s = state.sessions.find(s => s.id === state.currentSessionId);
+            if (s) {
+                s.messages = [];
+                s.updatedAt = Date.now();
+                saveHistory();
+                loadSession(state.currentSessionId);
+                addOutputLine(`🧹 Context cleared`, 'system');
+                showNotification('Context', 'Chat context cleared');
+            }
+        }
+    };
+
+    document.getElementById('menu-import-chat').onclick = () => {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = '.md,.json,.txt';
+        input.onchange = (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (ev) => {
+                    try {
+                        const content = ev.target.result;
+                        if (file.name.endsWith('.json')) {
+                            const imported = JSON.parse(content);
+                            if (imported.sessions) {
+                                state.sessions = imported.sessions;
+                                saveHistory();
+                                updateHistoryUI();
+                                showNotification('Imported', `${imported.sessions.length} chats imported`);
+                            }
+                        } else {
+                            pushMessage({ role: 'user', content: content });
+                            renderMessage('user', `[Imported from ${file.name}]`);
+                            showNotification('Imported', `Chat imported from ${file.name}`);
+                        }
+                    } catch (err) {
+                        showNotification('Import Error', `Failed to import: ${err.message}`);
+                    }
+                };
+                reader.readAsText(file);
+            }
+        };
+        input.click();
+    };
+
     document.getElementById('menu-auto-retry').onclick = () => {
         // Auto retry is always enabled
         showNotification('AI Settings', 'Auto Retry is always enabled (max 5 retries)');
@@ -1117,6 +1558,18 @@ function init() {
     document.getElementById('btn-close-settings').onclick = () => els.modal.classList.add('hidden');
     document.getElementById('btn-save-settings').onclick = saveSettings;
     document.getElementById('btn-fetch-models').onclick = fetchModels;
+
+    // Custom Provider handlers
+    document.getElementById('btn-add-custom-provider').onclick = () => {
+        resetProviderForm();
+        document.getElementById('custom-provider-form').classList.remove('hidden');
+    };
+    document.getElementById('btn-save-custom-provider').onclick = saveCustomProvider;
+    document.getElementById('btn-cancel-custom-provider').onclick = resetProviderForm;
+    document.getElementById('cp-no-key').addEventListener('change', toggleKeyInput);
+
+    // Render custom providers list
+    renderCustomProvidersList();
 
     els.btnSend.onclick = () => handleSendOrStop(false);
     els.chatInput.addEventListener('keydown', e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); if (!els.btnSend.disabled) handleSendOrStop(false); } });
@@ -1324,7 +1777,70 @@ function refreshFolderTree() {
 function handleFileUpload(e) { Array.from(e.target.files).forEach(f => { const r = new FileReader(); r.onload = ev => { state.attachments.push({ name: f.name, type: f.type.startsWith('image/') ? 'image' : 'file', data: ev.target.result, rawFile: f }); renderAttachmentsPreview(); updateSendButtonState(); }; if (f.type.startsWith('image/')) r.readAsDataURL(f); else r.readAsText(f); }); e.target.value = ''; }
 function renderAttachmentsPreview() { els.attachmentsPreview.innerHTML = ''; if (state.attachments.length === 0) { els.attachmentsPreview.classList.add('hidden'); return; } els.attachmentsPreview.classList.remove('hidden'); state.attachments.forEach((a, i) => { const d = document.createElement('div'); d.className = 'relative shrink-0 border border-gray-200 rounded-xl bg-white overflow-hidden shadow-sm flex items-center justify-center w-14 h-14 group'; if (a.type === 'image') d.innerHTML = `<img src="${a.data}" class="w-full h-full object-cover">`; else d.innerHTML = `<div class="text-[9px] font-bold text-center break-all p-1 text-gray-600">${a.name.substring(0, 12)}</div>`; const b = document.createElement('button'); b.className = 'absolute top-0 right-0 bg-white/90 hover:bg-red-500 hover:text-white text-black p-0.5 rounded-bl-lg hidden group-hover:block transition'; b.innerHTML = `<span class="material-symbols-rounded text-[12px]">close</span>`; b.onclick = () => { state.attachments.splice(i, 1); renderAttachmentsPreview(); updateSendButtonState(); }; d.appendChild(b); els.attachmentsPreview.appendChild(d); }); }
 function updateSendButtonState() { if (state.isGenerating) els.btnSend.disabled = false; else els.btnSend.disabled = els.chatInput.value.trim().length === 0 && state.attachments.length === 0; }
-async function fetchModels(se = true) { const k = { agnes: document.getElementById('api-key-agnes').value.trim(), aqua: document.getElementById('api-key-aqua').value.trim() }; els.modelSelect.innerHTML = '<option value="">Loading Models...</option>'; let am = []; const ff = async (pk, ks) => { if (!ks) return; try { const r = await fetch(`${providers[pk].url}/models`, { headers: { 'Authorization': `Bearer ${ks}` } }); if (r.ok) { const d = await r.json(); (d.data || []).forEach(m => { if (m.id.toLowerCase().includes('video')) return; if (pk === 'aqua') { const t = String(m.tier || '').toLowerCase(); if (m.tier && !t.includes('standar')) return; if (!m.tier && (m.id.toLowerCase().includes('pro') || m.id.toLowerCase().includes('premium'))) return; } am.push({ id: m.id, provider: pk, label: `[${providers[pk].name}] ${m.id}` }); }); } } catch (e) { } }; await Promise.all([ff('agnes', k.agnes), ff('aqua', k.aqua)]); els.modelSelect.innerHTML = ''; if (am.length === 0) { els.modelSelect.innerHTML = '<option value="">No models found</option>'; if (se) { els.errorBox.textContent = 'Error fetching models. Check API Keys.'; els.errorBox.classList.remove('hidden'); } return; } am.sort((a, b) => a.label.localeCompare(b.label)).forEach(m => { const o = document.createElement('option'); o.value = `${m.provider}|${m.id}`; o.textContent = m.label; if (o.value === state.modelId) o.selected = true; els.modelSelect.appendChild(o); }); if (!state.modelId || !am.find(m => `${m.provider}|${m.id}` === state.modelId)) state.modelId = els.modelSelect.value; updateCtx(); }
+async function fetchModels(se = true) {
+    const k = { agnes: document.getElementById('api-key-agnes').value.trim(), aqua: document.getElementById('api-key-aqua').value.trim() };
+    els.modelSelect.innerHTML = '<option value="">Loading Models...</option>';
+    let am = [];
+
+    // Fetch from built-in providers
+    const ff = async (pk, ks) => {
+        if (!ks) return;
+        try {
+            const r = await fetch(`${providers[pk].url}/models`, { headers: { 'Authorization': `Bearer ${ks}` } });
+            if (r.ok) {
+                const d = await r.json();
+                (d.data || []).forEach(m => {
+                    if (m.id.toLowerCase().includes('video')) return;
+                    if (pk === 'aqua') {
+                        const t = String(m.tier || '').toLowerCase();
+                        if (m.tier && !t.includes('standar')) return;
+                        if (!m.tier && (m.id.toLowerCase().includes('pro') || m.id.toLowerCase().includes('premium'))) return;
+                    }
+                    am.push({ id: m.id, provider: pk, label: `[${providers[pk].name}] ${m.id}` });
+                });
+            }
+        } catch (e) { }
+    };
+    await Promise.all([ff('agnes', k.agnes), ff('aqua', k.aqua)]);
+
+    // Fetch from custom providers
+    for (let i = 0; i < customProviders.length; i++) {
+        const cp = customProviders[i];
+        try {
+            const headers = { 'Content-Type': 'application/json' };
+            if (!cp.noKey && cp.key) {
+                headers['Authorization'] = `Bearer ${cp.key}`;
+            }
+            const r = await fetch(`${cp.url}/models`, { headers });
+            if (r.ok) {
+                const d = await r.json();
+                (d.data || []).forEach(m => {
+                    if (m.id.toLowerCase().includes('video')) return;
+                    am.push({ id: m.id, provider: `custom_${i}`, label: `[${cp.name}] ${m.id}` });
+                });
+            }
+        } catch (e) { console.warn(`Failed to fetch from ${cp.name}:`, e); }
+    }
+
+    els.modelSelect.innerHTML = '';
+    if (am.length === 0) {
+        els.modelSelect.innerHTML = '<option value="">No models found</option>';
+        if (se) {
+            els.errorBox.textContent = 'Error fetching models. Check API Keys.';
+            els.errorBox.classList.remove('hidden');
+        }
+        return;
+    }
+    am.sort((a, b) => a.label.localeCompare(b.label)).forEach(m => {
+        const o = document.createElement('option');
+        o.value = `${m.provider}|${m.id}`;
+        o.textContent = m.label;
+        if (o.value === state.modelId) o.selected = true;
+        els.modelSelect.appendChild(o);
+    });
+    if (!state.modelId || !am.find(m => `${m.provider}|${m.id}` === state.modelId)) state.modelId = els.modelSelect.value;
+    updateCtx();
+}
 function saveSettings() { state.keys.agnes = document.getElementById('api-key-agnes').value.trim(); state.keys.aqua = document.getElementById('api-key-aqua').value.trim(); localStorage.setItem('ventarys_key_agnes', state.keys.agnes); localStorage.setItem('ventarys_key_aqua', state.keys.aqua); state.modelId = els.modelSelect.value; localStorage.setItem('ventarys_modelId', state.modelId); updateCtx(); els.modal.classList.add('hidden'); } els.modelSelect.addEventListener('change', e => { state.modelId = e.target.value; localStorage.setItem('ventarys_modelId', state.modelId); updateCtx(); });
 function saveHistory() { try { localStorage.setItem('ventarys_sessions', JSON.stringify(state.sessions)); } catch (e) { state.sessions = state.sessions.slice(0, 10); try { localStorage.setItem('ventarys_sessions', JSON.stringify(state.sessions)); } catch (err) { localStorage.setItem('ventarys_sessions', '[]'); } } updateCtx(); }
 marked.setOptions({ highlight: (c, l) => hljs.highlight(c, { language: hljs.getLanguage(l) ? l : 'plaintext' }).value, breaks: true, gfm: true });
@@ -1388,23 +1904,71 @@ async function runLocalTool(c) {
     if (!isElectron) return "Critical Error: The user is in the Web version. Local tools require the downloadable Electron version of Ventarys.";
     const n = c.function.name;
     let a = {};
-    try { a = JSON.parse(c.function.arguments); } catch (e) { return "Error parsing args."; }
+    try { a = JSON.parse(c.function.arguments); } catch (e) {
+        addOutputLine(`Error parsing arguments for ${n}: ${e.message}`, 'error');
+        return "Error parsing args.";
+    }
     const cwd = currentFolderPath || os.homedir();
 
+    // Log tool invocation
+    addOutputLine(`🔧 Tool called: ${n}`, 'ai');
+    addOutputLine(`   Args: ${JSON.stringify(a).substring(0, 150)}`, 'system');
+
     if (n === 'execute_terminal') {
+        addOutputLine(`⌘ Executing terminal command: ${a.command}`, 'info');
         if (term && ptyProcess) { ptyProcess.stdin.write(`${a.command}\r\n`); term.focus(); }
-        return new Promise(res => { cpModule.exec(a.command, { cwd }, (err, out, stde) => res(out || stde || "Command executed.")); });
+        return new Promise(res => {
+            cpModule.exec(a.command, { cwd }, (err, out, stde) => {
+                const result = out || stde || "Command executed.";
+                addOutputLine(`✓ Command completed successfully`, 'success');
+                if (out) addOutputLine(`   Output: ${out.substring(0, 200)}`, 'system');
+                if (err) addOutputLine(`   ⚠ Error: ${err.message}`, 'warning');
+                res(result);
+            });
+        });
     } else if (n === 'execute_git_command') {
         const cmd = `git ${a.args}`;
+        addOutputLine(`📦 Executing git command: ${cmd}`, 'info');
         if (term && ptyProcess) { ptyProcess.stdin.write(`${cmd}\r\n`); term.focus(); }
-        return new Promise(res => { cpModule.exec(cmd, { cwd }, (err, out, stde) => res(out || stde || "Git command executed.")); });
+        return new Promise(res => {
+            cpModule.exec(cmd, { cwd }, (err, out, stde) => {
+                const result = out || stde || "Git command executed.";
+                if (err) {
+                    addOutputLine(`✗ Git error: ${err.message}`, 'error');
+                } else {
+                    addOutputLine(`✓ Git command completed`, 'success');
+                }
+                res(result || "Git command executed.");
+            });
+        });
     } else if (n === 'list_directory') {
-        try { const f = fs.readdirSync(path.resolve(cwd, a.path || '.'), { withFileTypes: true }); return `Dir of ${a.path || '.'}:\n` + f.map(x => `${x.isDirectory() ? '[DIR] ' : '[FILE]'} ${x.name}`).join('\n'); } catch (e) { return `Error: ${e.message}`; }
+        try {
+            const targetPath = path.resolve(cwd, a.path || '.');
+            addOutputLine(`📂 Listing directory: ${a.path || '.'}`, 'info');
+            const f = fs.readdirSync(targetPath, { withFileTypes: true });
+            const result = `Dir of ${a.path || '.'}:\n` + f.map(x => `${x.isDirectory() ? '[DIR] ' : '[FILE]'} ${x.name}`).join('\n');
+            addOutputLine(`✓ Listed ${f.length} items`, 'success');
+            return result;
+        } catch (e) {
+            addOutputLine(`✗ List directory error: ${e.message}`, 'error');
+            return `Error: ${e.message}`;
+        }
     } else if (n === 'read_file') {
-        try { return fs.readFileSync(path.resolve(cwd, a.file_path), 'utf8').substring(0, 8000); } catch (e) { return `Error: ${e.message}`; }
+        try {
+            const targetPath = path.resolve(cwd, a.file_path);
+            addOutputLine(`📄 Reading file: ${a.file_path}`, 'info');
+            const content = fs.readFileSync(targetPath, 'utf8');
+            addOutputLine(`✓ Read ${content.length} bytes from ${path.basename(a.file_path)}`, 'success');
+            return content.substring(0, 8000);
+        } catch (e) {
+            addOutputLine(`✗ Read file error: ${e.message}`, 'error');
+            return `Error: ${e.message}`;
+        }
     } else if (n === 'write_file') {
         try {
             const tp = path.resolve(cwd, a.file_path);
+            addOutputLine(`✏️  Writing file: ${a.file_path}`, 'info');
+            addOutputLine(`   Content length: ${a.content.length} bytes`, 'system');
             fs.writeFileSync(tp, a.content, 'utf8');
 
             // Track this file change for auto-reload
@@ -1417,12 +1981,18 @@ async function runLocalTool(c) {
                     editor.setValue(a.content, -1);
                     isEditorUpdating = false;
                     renderTabs();
+                    addOutputLine(`🔄 Editor updated with new content`, 'success');
                 }
             }
 
+            addOutputLine(`✓ File saved: ${tp}`, 'success');
             return `File successfully saved at ${tp}`;
-        } catch (e) { return `Write error: ${e.message}`; }
+        } catch (e) {
+            addOutputLine(`✗ Write file error: ${e.message}`, 'error');
+            return `Write error: ${e.message}`;
+        }
     } else if (n === 'ide_live_edit') {
+        addOutputLine(`🎯 Second Cursor edit: ${a.file_path} at line ${a.line}`, 'info');
         if (activeFilePath && path.normalize(activeFilePath) === path.normalize(a.file_path) && editor) {
             try {
                 isEditorUpdating = true;
@@ -1436,12 +2006,15 @@ async function runLocalTool(c) {
                 }
                 isEditorUpdating = false;
                 saveCurrentFile();
+                addOutputLine(`✓ Second cursor inserted code at line ${a.line}`, 'success');
                 return `Second cursor executed: Code inserted successfully at line ${a.line}.`;
             } catch (e) {
                 isEditorUpdating = false;
+                addOutputLine(`✗ IDE edit error: ${e.message}`, 'error');
                 return `Error editing in IDE: ${e.message}`;
             }
         } else {
+            addOutputLine(`⚠ File not active: ${a.file_path}`, 'warning');
             return `File ${a.file_path} is NOT the active file currently in the IDE. Use the write_file tool instead.`;
         }
     } else if (n === 'run_automation_script') {
@@ -1449,6 +2022,7 @@ async function runLocalTool(c) {
             const ext = a.language === 'python' ? 'py' : a.language === 'node' ? 'js' : a.language === 'powershell' ? 'ps1' : 'sh';
             const tmpPath = path.join(os.tmpdir(), `ventarys_auto_${Date.now()}.${ext}`);
             fs.writeFileSync(tmpPath, a.script, 'utf8');
+            addOutputLine(`🤖 Running ${a.language} automation script`, 'info');
 
             let cmd = '';
             if (a.language === 'python') cmd = `python "${tmpPath}"`;
@@ -1465,33 +2039,84 @@ async function runLocalTool(c) {
             return new Promise(res => {
                 cpModule.exec(cmd, { cwd }, (err, out, stde) => {
                     fs.unlink(tmpPath, () => { });
-                    res(`OS Automation executed.\nOutput: ${out || stde || "Clean execution with no console output."}`);
+                    if (err) {
+                        addOutputLine(`✗ Script error: ${err.message}`, 'error');
+                        res(`OS Automation executed with errors.\nOutput: ${out || stde || err.message}`);
+                    } else {
+                        addOutputLine(`✓ Script executed successfully`, 'success');
+                        res(`OS Automation executed.\nOutput: ${out || stde || "Clean execution with no console output."}`);
+                    }
                 });
             });
-        } catch (e) { return `Critical error in automation execution: ${e.message}`; }
+        } catch (e) {
+            addOutputLine(`✗ Script execution error: ${e.message}`, 'error');
+            return `Critical error in automation execution: ${e.message}`;
+        }
     }
+    addOutputLine(`✗ Unknown tool: ${n}`, 'error');
     return "Unknown tool called by the Agent."
 }
 
 async function handleSendOrStop(iAR = false) {
-    if (state.isGenerating && !iAR) { if (state.abortController) state.abortController.abort(); state.isGenerating = false; els.sendIcon.textContent = 'arrow_upward'; els.sendIcon.classList.remove('text-red-500'); updateSendButtonState(); return; }
+    if (state.isGenerating && !iAR) {
+        if (state.abortController) state.abortController.abort();
+        state.isGenerating = false;
+        els.sendIcon.textContent = 'arrow_upward';
+        els.sendIcon.classList.remove('text-red-500');
+        updateSendButtonState();
+        addOutputLine(`⛔ Agent generation stopped by user`, 'warning');
+        return;
+    }
     if (!state.modelId) { els.modal.classList.remove('hidden'); return; }
-    const [pK, rM] = state.modelId.split('|'), aK = state.keys[pK];
-    if (!aK) { alert('API Keys are missing.'); return; }
+    const [pK, rM] = state.modelId.split('|');
+
+    // Get API key and URL based on provider
+    let aK = '', pUrl = '';
+    if (pK === 'agnes') { aK = state.keys.agnes; pUrl = providers.agnes.url; }
+    else if (pK === 'aqua') { aK = state.keys.aqua; pUrl = providers.aqua.url; }
+    else if (pK.startsWith('custom_')) {
+        const cpIndex = parseInt(pK.split('_')[1]);
+        const cp = customProviders[cpIndex];
+        if (cp) {
+            pUrl = cp.url;
+            if (!cp.noKey) aK = cp.key || '';
+        }
+    }
+
+    if (!aK && pK !== 'agnes' && pK !== 'aqua' && !pK.startsWith('custom_')) {
+        alert('API Key is missing.');
+        return;
+    }
+
     const pt = els.chatInput.value.trim();
     if (!pt && state.attachments.length === 0 && !iAR) return;
 
     if (!iAR) {
-        state.isGenerating = true; els.sendIcon.textContent = 'square'; els.sendIcon.classList.add('text-red-500'); els.chatInput.value = ''; els.chatInput.style.height = 'auto';
+        addOutputLine(`💬 User message received: "${pt.substring(0, 50)}..."`, 'info');
+        state.isGenerating = true;
+        els.sendIcon.textContent = 'square';
+        els.sendIcon.classList.add('text-red-500');
+        els.chatInput.value = '';
+        els.chatInput.style.height = 'auto';
         let uc = pt, cs = "";
         const tf = state.attachments.filter(a => a.type === 'file');
-        if (tf.length > 0) cs = tf.map(f => `\n--- Attached File: ${f.name} ---\n${f.data}`).join('\n');
+        if (tf.length > 0) {
+            addOutputLine(`📎 ${tf.length} file(s) attached`, 'system');
+            cs = tf.map(f => `\n--- Attached File: ${f.name} ---\n${f.data}`).join('\n');
+        }
         const ec = editor ? editor.getValue() : '', fn = activeFilePath ? path.basename(activeFilePath) : 'None';
-        if (ec && activeFilePath) cs += `\n--- Active File in Editor: ${fn} ---\n${ec.substring(0, 4000)}`;
+        if (ec && activeFilePath) {
+            addOutputLine(`📝 Active file included: ${fn} (${ec.length} bytes)`, 'system');
+            cs += `\n--- Active File in Editor: ${fn} ---\n${ec.substring(0, 4000)}`;
+        }
         if (cs) uc = `${cs}\n\nUser:\n${pt}`;
         const img = state.attachments.filter(a => a.type === 'image');
         let fc = uc;
-        if (img.length > 0) { fc = [{ type: "text", text: uc }]; img.forEach(i => fc.push({ type: "image_url", image_url: { url: i.data } })); }
+        if (img.length > 0) {
+            addOutputLine(`🖼️ ${img.length} image(s) attached`, 'system');
+            fc = [{ type: "text", text: uc }];
+            img.forEach(i => fc.push({ type: "image_url", image_url: { url: i.data } }));
+        }
 
         pushMessage({ role: 'user', content: fc });
         const s = state.sessions.find(x => x.id === state.currentSessionId);
@@ -1499,7 +2124,10 @@ async function handleSendOrStop(iAR = false) {
 
         renderMessage('user', pt || "[Attached File(s)]");
         updateHistoryUI(); updateCtx();
-        state.attachments = []; renderAttachmentsPreview(); updateSendButtonState();
+        state.attachments = [];
+        renderAttachmentsPreview();
+        updateSendButtonState();
+        addOutputLine(`🤖 AI Agent processing...`, 'ai');
     }
 
     const mn = renderMessage('assistant', '', true), cn = mn.querySelector('.markdown-body'), tn = mn.querySelector('.tools-container');
@@ -1507,7 +2135,9 @@ async function handleSendOrStop(iAR = false) {
 
     try {
         const msgs = getMessages();
-        const res = await fetchWithRetry(`${providers[pK].url}/chat/completions`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${aK}` }, body: JSON.stringify({ model: rM, messages: [getSystemPrompt(), ...msgs], stream: true, tools: toolsDefinition, tool_choice: "auto" }), signal: state.abortController.signal });
+        const headers = { 'Content-Type': 'application/json' };
+        if (aK) headers['Authorization'] = `Bearer ${aK}`;
+        const res = await fetchWithRetry(`${pUrl}/chat/completions`, { method: 'POST', headers, body: JSON.stringify({ model: rM, messages: [getSystemPrompt(), ...msgs], stream: true, tools: toolsDefinition, tool_choice: "auto" }), signal: state.abortController.signal });
         if (!res.ok) throw new Error(`HTTP network error ${res.status}`);
         const rd = res.body.getReader(), dc = new TextDecoder("utf-8");
         let dn = false, bf = "", fr = "", tcD = {};
@@ -1551,10 +2181,17 @@ async function handleSendOrStop(iAR = false) {
 
         let tca = Object.values(tcD);
         if (tca.length > 0) {
+            addOutputLine(`🔀 AI generated ${tca.length} tool call(s)`, 'info');
             pushMessage({ role: 'assistant', content: fr || null, tool_calls: tca });
             for (let c of tca) {
                 let rs;
-                try { rs = await runLocalTool(c); } catch (e) { rs = "Local tool failed: " + e.message; }
+                try {
+                    addOutputLine(`⏳ Executing tool: ${c.function.name}`, 'info');
+                    rs = await runLocalTool(c);
+                } catch (e) {
+                    addOutputLine(`✗ Tool execution error: ${e.message}`, 'error');
+                    rs = "Local tool failed: " + e.message;
+                }
 
                 const ic = document.getElementById(`tool-icon-${c.id}`);
                 const box = document.getElementById(`tool-call-${c.id}`);
@@ -1563,13 +2200,16 @@ async function handleSendOrStop(iAR = false) {
 
                 pushMessage({ role: 'tool', tool_call_id: c.id, name: c.function.name, content: String(rs).substring(0, 4000) });
             }
+            addOutputLine(`🔄 Continuing agent conversation...`, 'ai');
             sR = true;
         } else {
+            addOutputLine(`✅ Agent response completed`, 'success');
             pushMessage({ role: 'assistant', content: fr || "" });
             cn.querySelectorAll('pre code').forEach(b => hljs.highlightElement(b));
             saveHistory();
         }
     } catch (err) {
+        addOutputLine(`✗ Agent error: ${err.message}`, 'error');
         if (err.name === 'AbortError') cn.innerHTML += `<br><span class="text-red-500 text-[12px] font-bold">[Stopped by user]</span>`;
         else cn.innerHTML = `<span class="text-red-500 font-bold">Agent Error: ${err.message}</span>`;
     } finally {
@@ -1578,7 +2218,10 @@ async function handleSendOrStop(iAR = false) {
             injectCodeButtons(els.chatContainer);
 
             const msgs = getMessages();
-            if (msgs.length > 0 && msgs[msgs.length - 1].role === 'assistant') { showNotification('Ventarys IDX', 'Agent finished the requested task.'); }
+            if (msgs.length > 0 && msgs[msgs.length - 1].role === 'assistant') {
+                showNotification('Ventarys IDX', 'Agent finished the requested task.');
+                addOutputLine(`🏁 Agent task completed`, 'success');
+            }
         }
     }
     if (sR) await handleSendOrStop(true);

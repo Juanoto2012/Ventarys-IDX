@@ -927,3 +927,89 @@ input[type="checkbox"].accent-blue-500 {
 .dark #about-modal {
     background-color: rgba(0, 0, 0, 0.7);
 }
+
+/* Output Panel Styles */
+#output-content .output-line {
+    padding: 2px 0;
+    font-family: 'Consolas', 'Courier New', monospace;
+    line-height: 1.5;
+}
+
+#output-content .output-line.info {
+    color: #58a6ff;
+}
+
+#output-content .output-line.success {
+    color: #3fb950;
+}
+
+#output-content .output-line.error {
+    color: #f85149;
+}
+
+#output-content .output-line.warning {
+    color: #d29922;
+}
+
+#output-content .output-line.system {
+    color: #8b949e;
+    font-style: italic;
+}
+
+#output-content .output-line.ai {
+    color: #a371f7;
+}
+
+.dark #output-content {
+    background-color: #161b22;
+    color: #e6edf3;
+}
+
+.dark #output-container {
+    background-color: #161b22;
+}
+
+/* Run code modal */
+#run-code-modal {
+    background-color: rgba(0, 0, 0, 0.7);
+}
+
+#run-code-modal>div {
+    background-color: var(--bg-surface);
+}
+
+/* Keyboard shortcuts modal */
+#shortcuts-modal {
+    background-color: rgba(0, 0, 0, 0.7);
+}
+
+#shortcuts-modal>div {
+    background-color: var(--bg-surface);
+}
+
+/* Git branches modal */
+#git-branches-modal {
+    background-color: rgba(0, 0, 0, 0.7);
+}
+
+#git-branches-modal>div {
+    background-color: var(--bg-surface);
+}
+
+/* Feedback modal */
+#feedback-modal {
+    background-color: rgba(0, 0, 0, 0.7);
+}
+
+#feedback-modal>div {
+    background-color: var(--bg-surface);
+}
+
+/* Documentation modal */
+#docs-modal {
+    background-color: rgba(0, 0, 0, 0.7);
+}
+
+#docs-modal>div {
+    background-color: var(--bg-surface);
+}

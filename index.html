@@ -113,6 +113,122 @@
         </div>
     </div>
 
+    <!-- Keyboard Shortcuts Modal -->
+    <div id="shortcuts-modal"
+        class="hidden fixed inset-0 bg-black/70 z-50 flex items-center justify-center backdrop-blur-sm">
+        <div
+            class="bg-[#161b22] rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col transform transition-all border border-[#30363d]">
+            <div class="p-5 border-b border-[#30363d] flex justify-between items-center bg-[#161b22]">
+                <h2 class="text-base font-bold text-[#e6edf3] flex items-center gap-2">
+                    <span class="material-symbols-rounded text-[#58a6ff]">keyboard</span> Keyboard Shortcuts
+                </h2>
+                <button id="btn-close-shortcuts"
+                    class="text-[#8b949e] hover:text-[#e6edf3] bg-[#21262d] hover:bg-[#30363d] p-1 rounded-full transition">
+                    <span class="material-symbols-rounded text-[18px]">close</span>
+                </button>
+            </div>
+            <div class="p-6 overflow-y-auto max-h-[70vh]">
+                <div class="space-y-4">
+                    <div>
+                        <h3 class="text-[12px] font-bold text-[#e6edf3] uppercase tracking-wider mb-2">General</h3>
+                        <div class="space-y-1.5">
+                            <div class="flex justify-between text-[12px]"><span class="text-[#8b949e]">Open
+                                    Folder</span><kbd
+                                    class="bg-[#21262d] px-2 py-0.5 rounded text-[#e6edf3]">Ctrl+O</kbd></div>
+                            <div class="flex justify-between text-[12px]"><span class="text-[#8b949e]">Save
+                                    File</span><kbd class="bg-[#21262d] px-2 py-0.5 rounded text-[#e6edf3]">Ctrl+S</kbd>
+                            </div>
+                            <div class="flex justify-between text-[12px]"><span class="text-[#8b949e]">Find</span><kbd
+                                    class="bg-[#21262d] px-2 py-0.5 rounded text-[#e6edf3]">Ctrl+F</kbd></div>
+                        </div>
+                    </div>
+                    <div class="h-[1px] bg-[#21262d]"></div>
+                    <div>
+                        <h3 class="text-[12px] font-bold text-[#e6edf3] uppercase tracking-wider mb-2">AI Chat</h3>
+                        <div class="space-y-1.5">
+                            <div class="flex justify-between text-[12px]"><span class="text-[#8b949e]">Send
+                                    Message</span><kbd
+                                    class="bg-[#21262d] px-2 py-0.5 rounded text-[#e6edf3]">Ctrl+Enter</kbd></div>
+                            <div class="flex justify-between text-[12px]"><span class="text-[#8b949e]">Stop
+                                    Generation</span><kbd
+                                    class="bg-[#21262d] px-2 py-0.5 rounded text-[#e6edf3]">Esc</kbd></div>
+                        </div>
+                    </div>
+                    <div class="h-[1px] bg-[#21262d]"></div>
+                    <div>
+                        <h3 class="text-[12px] font-bold text-[#e6edf3] uppercase tracking-wider mb-2">Editor</h3>
+                        <div class="space-y-1.5">
+                            <div class="flex justify-between text-[12px]"><span class="text-[#8b949e]">Increase
+                                    Font</span><kbd class="bg-[#21262d] px-2 py-0.5 rounded text-[#e6edf3]">Ctrl++</kbd>
+                            </div>
+                            <div class="flex justify-between text-[12px]"><span class="text-[#8b949e]">Decrease
+                                    Font</span><kbd class="bg-[#21262d] px-2 py-0.5 rounded text-[#e6edf3]">Ctrl+-</kbd>
+                            </div>
+                            <div class="flex justify-between text-[12px]"><span class="text-[#8b949e]">Select
+                                    All</span><kbd class="bg-[#21262d] px-2 py-0.5 rounded text-[#e6edf3]">Ctrl+A</kbd>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Agent Configuration Modal -->
+    <div id="agent-config-modal"
+        class="hidden fixed inset-0 bg-black/70 z-50 flex items-center justify-center backdrop-blur-sm">
+        <div
+            class="bg-[#161b22] rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col transform transition-all border border-[#30363d]">
+            <div class="p-5 border-b border-[#30363d] flex justify-between items-center bg-[#161b22]">
+                <h2 class="text-base font-bold text-[#e6edf3] flex items-center gap-2">
+                    <span class="material-symbols-rounded text-[#58a6ff]">tune</span> Agent Configuration
+                </h2>
+                <button id="btn-close-agent-config"
+                    class="text-[#8b949e] hover:text-[#e6edf3] bg-[#21262d] hover:bg-[#30363d] p-1 rounded-full transition">
+                    <span class="material-symbols-rounded text-[18px]">close</span>
+                </button>
+            </div>
+            <div class="p-6 space-y-4">
+                <div>
+                    <label class="block text-[12px] font-bold text-[#8b949e] uppercase tracking-wider mb-2">Max
+                        Retries</label>
+                    <input type="number" id="config-max-retries" value="5" min="0" max="20"
+                        class="w-full bg-[#0d1117] border border-[#30363d] rounded-lg px-3 py-2 text-[12px] text-[#e6edf3] outline-none focus:border-[#58a6ff] transition">
+                    <p class="text-[10px] text-[#8b949e] mt-1">Number of retry attempts for failed API requests</p>
+                </div>
+                <div>
+                    <label class="block text-[12px] font-bold text-[#8b949e] uppercase tracking-wider mb-2">Retry Delay
+                        (ms)</label>
+                    <input type="number" id="config-retry-delay" value="1000" min="500" max="30000" step="500"
+                        class="w-full bg-[#0d1117] border border-[#30363d] rounded-lg px-3 py-2 text-[12px] text-[#e6edf3] outline-none focus:border-[#58a6ff] transition">
+                    <p class="text-[10px] text-[#8b949e] mt-1">Initial delay before retry (exponential backoff)</p>
+                </div>
+                <div>
+                    <label class="block text-[12px] font-bold text-[#8b949e] uppercase tracking-wider mb-2">Auto Reload
+                        Interval (ms)</label>
+                    <input type="number" id="config-autoreload-interval" value="2000" min="500" max="10000" step="500"
+                        class="w-full bg-[#0d1117] border border-[#30363d] rounded-lg px-3 py-2 text-[12px] text-[#e6edf3] outline-none focus:border-[#58a6ff] transition">
+                    <p class="text-[10px] text-[#8b949e] mt-1">How often to check for file changes</p>
+                </div>
+                <div class="flex items-center gap-2">
+                    <input type="checkbox" id="config-log-output" checked class="accent-blue-500">
+                    <label for="config-log-output" class="text-[12px] text-[#e6edf3]">Log AI actions to output
+                        panel</label>
+                </div>
+                <div class="flex gap-2 pt-2">
+                    <button id="btn-save-agent-config"
+                        class="flex-1 bg-[#21262d] hover:bg-[#30363d] text-[#e6edf3] text-[12px] py-2 rounded-lg transition border border-[#30363d] font-bold flex items-center justify-center gap-1">
+                        <span class="material-symbols-rounded text-[14px]">save</span> Save
+                    </button>
+                    <button id="btn-cancel-agent-config"
+                        class="flex-1 bg-[#0d1117] hover:bg-[#21262d] text-[#8b949e] text-[12px] py-2 rounded-lg transition border border-[#30363d] font-bold flex items-center justify-center gap-1">
+                        <span class="material-symbols-rounded text-[14px]">close</span> Cancel
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <header
         class="drag-region flex flex-col shrink-0 select-none z-30 bg-[#161b22] border-b border-[#30363d] shadow-sm">
         <div class="h-10 flex justify-between items-center px-4">
@@ -227,6 +343,23 @@
                         class="w-full text-left px-4 py-2 hover:bg-[#21262d] flex items-center gap-3 text-[#c9d1d9]">
                         <span class="material-symbols-rounded text-[16px]">fullscreen</span> Toggle Fullscreen
                     </button>
+                    <div class="h-[1px] bg-[#21262d] my-1"></div>
+                    <button id="menu-toggle-output"
+                        class="w-full text-left px-4 py-2 hover:bg-[#21262d] flex items-center gap-3 text-[#c9d1d9]">
+                        <span class="material-symbols-rounded text-[16px]">console</span> Toggle Output Panel
+                    </button>
+                    <button id="menu-toggle-minimap"
+                        class="w-full text-left px-4 py-2 hover:bg-[#21262d] flex items-center gap-3 text-[#c9d1d9]">
+                        <span class="material-symbols-rounded text-[16px]">crop_side</span> Toggle Minimap
+                    </button>
+                    <button id="menu-word-wrap"
+                        class="w-full text-left px-4 py-2 hover:bg-[#21262d] flex items-center gap-3 text-[#c9d1d9]">
+                        <span class="material-symbols-rounded text-[16px]">wrap_text</span> Word Wrap
+                    </button>
+                    <button id="menu-sticky-scroll"
+                        class="w-full text-left px-4 py-2 hover:bg-[#21262d] flex items-center gap-3 text-[#c9d1d9]">
+                        <span class="material-symbols-rounded text-[16px]">vertical_align_center</span> Sticky Scroll
+                    </button>
                 </div>
             </div>
             <!-- AI Menu -->
@@ -234,7 +367,7 @@
                 <button
                     class="px-3 py-1 hover:bg-[#21262d] rounded-md transition cursor-pointer text-[#c9d1d9]">AI</button>
                 <div
-                    class="absolute hidden group-hover:block bg-[#161b22] border border-[#30363d] shadow-xl top-full left-0 z-50 min-w-[220px] py-1.5 rounded-xl">
+                    class="absolute hidden group-hover:block bg-[#161b22] border border-[#30363d] shadow-xl top-full left-0 z-50 min-w-[240px] py-1.5 rounded-xl">
                     <button id="menu-auto-retry"
                         class="w-full text-left px-4 py-2 hover:bg-[#21262d] flex items-center gap-3 text-[#c9d1d9]">
                         <span class="material-symbols-rounded text-[16px]" id="icon-auto-retry">check_circle</span>
@@ -251,9 +384,30 @@
                         Auto Accept Changes (Enabled)
                     </button>
                     <div class="h-[1px] bg-[#21262d] my-1"></div>
+                    <button id="menu-agent-config"
+                        class="w-full text-left px-4 py-2 hover:bg-[#21262d] flex items-center gap-3 text-[#c9d1d9]">
+                        <span class="material-symbols-rounded text-[16px]">tune</span> Agent Configuration
+                    </button>
+                    <button id="menu-clear-context"
+                        class="w-full text-left px-4 py-2 hover:bg-[#21262d] flex items-center gap-3 text-[#c9d1d9]">
+                        <span class="material-symbols-rounded text-[16px]">delete_sweep</span> Clear Context
+                    </button>
                     <button id="menu-export-chat"
                         class="w-full text-left px-4 py-2 hover:bg-[#21262d] flex items-center gap-3 text-[#c9d1d9]">
                         <span class="material-symbols-rounded text-[16px]">share</span> Export Chat
+                    </button>
+                    <button id="menu-import-chat"
+                        class="w-full text-left px-4 py-2 hover:bg-[#21262d] flex items-center gap-3 text-[#c9d1d9]">
+                        <span class="material-symbols-rounded text-[16px]">drive_file_move</span> Import Chat
+                    </button>
+                    <div class="h-[1px] bg-[#21262d] my-1"></div>
+                    <button id="menu-toggle-output"
+                        class="w-full text-left px-4 py-2 hover:bg-[#21262d] flex items-center gap-3 text-[#c9d1d9]">
+                        <span class="material-symbols-rounded text-[16px]">terminal</span> Toggle Output Panel
+                    </button>
+                    <button id="menu-clear-output"
+                        class="w-full text-left px-4 py-2 hover:bg-[#21262d] flex items-center gap-3 text-[#c9d1d9]">
+                        <span class="material-symbols-rounded text-[16px]">clear_all</span> Clear Output
                     </button>
                 </div>
             </div>
@@ -262,7 +416,7 @@
                 <button
                     class="px-3 py-1 hover:bg-[#21262d] rounded-md transition cursor-pointer text-[#c9d1d9]">Tools</button>
                 <div
-                    class="absolute hidden group-hover:block bg-[#161b22] border border-[#30363d] shadow-xl top-full left-0 z-50 min-w-[200px] py-1.5 rounded-xl">
+                    class="absolute hidden group-hover:block bg-[#161b22] border border-[#30363d] shadow-xl top-full left-0 z-50 min-w-[220px] py-1.5 rounded-xl">
                     <button id="menu-git-status"
                         class="w-full text-left px-4 py-2 hover:bg-[#21262d] flex items-center gap-3 text-[#c9d1d9]">
                         <span class="material-symbols-rounded text-[16px]">history</span> Git Status
@@ -271,10 +425,61 @@
                         class="w-full text-left px-4 py-2 hover:bg-[#21262d] flex items-center gap-3 text-[#c9d1d9]">
                         <span class="material-symbols-rounded text-[16px]">save</span> Git Commit
                     </button>
+                    <button id="menu-git-branch"
+                        class="w-full text-left px-4 py-2 hover:bg-[#21262d] flex items-center gap-3 text-[#c9d1d9]">
+                        <span class="material-symbols-rounded text-[16px]">merge_type</span> Git Branches
+                    </button>
                     <div class="h-[1px] bg-[#21262d] my-1"></div>
                     <button id="menu-terminal-clear"
                         class="w-full text-left px-4 py-2 hover:bg-[#21262d] flex items-center gap-3 text-[#c9d1d9]">
                         <span class="material-symbols-rounded text-[16px]">clear_all</span> Clear Terminal
+                    </button>
+                    <button id="menu-toggle-output"
+                        class="w-full text-left px-4 py-2 hover:bg-[#21262d] flex items-center gap-3 text-[#c9d1d9]">
+                        <span class="material-symbols-rounded text-[16px]">console</span> Toggle Output Panel
+                    </button>
+                    <div class="h-[1px] bg-[#21262d] my-1"></div>
+                    <button id="menu-run-code"
+                        class="w-full text-left px-4 py-2 hover:bg-[#21262d] flex items-center gap-3 text-[#c9d1d9]">
+                        <span class="material-symbols-rounded text-[16px]">play_circle</span> Run Current File
+                    </button>
+                    <button id="menu-run-terminal"
+                        class="w-full text-left px-4 py-2 hover:bg-[#21262d] flex items-center gap-3 text-[#c9d1d9]">
+                        <span class="material-symbols-rounded text-[16px]">terminal</span> Run in Terminal
+                    </button>
+                    <div class="h-[1px] bg-[#21262d] my-1"></div>
+                    <button id="menu-copy-path"
+                        class="w-full text-left px-4 py-2 hover:bg-[#21262d] flex items-center gap-3 text-[#c9d1d9]">
+                        <span class="material-symbols-rounded text-[16px]">content_copy</span> Copy File Path
+                    </button>
+                    <button id="menu-reveal-explorer"
+                        class="w-full text-left px-4 py-2 hover:bg-[#21262d] flex items-center gap-3 text-[#c9d1d9]">
+                        <span class="material-symbols-rounded text-[16px]">folder_open</span> Reveal in Explorer
+                    </button>
+                </div>
+            </div>
+            <!-- Help Menu -->
+            <div class="relative group">
+                <button
+                    class="px-3 py-1 hover:bg-[#21262d] rounded-md transition cursor-pointer text-[#c9d1d9]">Help</button>
+                <div
+                    class="absolute hidden group-hover:block bg-[#161b22] border border-[#30363d] shadow-xl top-full right-0 z-50 min-w-[200px] py-1.5 rounded-xl">
+                    <button id="menu-shortcuts"
+                        class="w-full text-left px-4 py-2 hover:bg-[#21262d] flex items-center gap-3 text-[#c9d1d9]">
+                        <span class="material-symbols-rounded text-[16px]">keyboard</span> Keyboard Shortcuts
+                    </button>
+                    <button id="menu-docs"
+                        class="w-full text-left px-4 py-2 hover:bg-[#21262d] flex items-center gap-3 text-[#c9d1d9]">
+                        <span class="material-symbols-rounded text-[16px]">menu_book</span> Documentation
+                    </button>
+                    <div class="h-[1px] bg-[#21262d] my-1"></div>
+                    <button id="menu-feedback"
+                        class="w-full text-left px-4 py-2 hover:bg-[#21262d] flex items-center gap-3 text-[#c9d1d9]">
+                        <span class="material-symbols-rounded text-[16px]">feedback</span> Send Feedback
+                    </button>
+                    <button id="menu-report-bug"
+                        class="w-full text-left px-4 py-2 hover:bg-[#21262d] flex items-center gap-3 text-[#c9d1d9]">
+                        <span class="material-symbols-rounded text-[16px]">bug_report</span> Report Bug
                     </button>
                 </div>
             </div>
@@ -428,6 +633,25 @@
                 </div>
                 <div id="terminal-container" class="flex-1 p-2 overflow-hidden bg-[#161b22]"></div>
             </div>
+
+            <!-- Output Panel (AI Console) -->
+            <div id="panel-output"
+                class="hidden h-48 bg-[#161b22] flex flex-col shrink-0 flex-none relative border-t border-[#30363d]">
+                <div class="h-8 border-b border-[#30363d] bg-[#1c2128] flex items-center px-4 justify-between">
+                    <div class="flex items-center gap-2 text-[11px] font-bold text-[#8b949e] uppercase tracking-widest">
+                        <span class="material-symbols-rounded text-[14px]">console</span> Output / AI Console
+                    </div>
+                    <div class="flex gap-3">
+                        <button id="btn-output-clear" class="text-[#8b949e] hover:text-[#e6edf3] transition"
+                            title="Clear"><span class="material-symbols-rounded text-[16px]">clear_all</span></button>
+                        <button id="btn-output-close" class="text-[#8b949e] hover:text-[#e6edf3] transition"
+                            title="Close"><span class="material-symbols-rounded text-[16px]">close</span></button>
+                    </div>
+                </div>
+                <div id="output-container" class="flex-1 p-3 overflow-hidden bg-[#161b22] font-mono text-[12px]">
+                    <div id="output-content" class="h-full overflow-y-auto space-y-1"></div>
+                </div>
+            </div>
         </main>
 
         <div class="resizer-x border-l border-[#30363d]" id="drag-chat"></div>
@@ -505,6 +729,46 @@
                             class="w-full bg-[#0d1117] border border-[#30363d] rounded-xl px-4 py-2.5 text-[13px] text-[#e6edf3] outline-none focus:border-[#58a6ff] focus:ring-1 focus:ring-[#58a6ff] transition">
                         <p class="text-[11px] text-[#8b949e] mt-1.5">https://api.aquadevs.com/v1</p>
                     </div>
+                    <div class="h-[1px] bg-[#21262d]"></div>
+                    <!-- Custom Providers Section -->
+                    <div>
+                        <div class="flex justify-between items-center mb-2">
+                            <label class="block text-[12px] font-bold text-[#8b949e] uppercase tracking-wider">Custom
+                                Providers</label>
+                            <button id="btn-add-custom-provider"
+                                class="text-[11px] bg-[#21262d] hover:bg-[#30363d] text-[#e6edf3] px-3 py-1.5 rounded-lg transition flex items-center gap-1 border border-[#30363d]">
+                                <span class="material-symbols-rounded text-[14px]">add</span> Add New
+                            </button>
+                        </div>
+                        <div id="custom-providers-list" class="space-y-2 max-h-[200px] overflow-y-auto">
+                            <!-- Custom providers will be rendered here -->
+                        </div>
+                        <div id="custom-provider-form" class="hidden space-y-2 mt-3">
+                            <input type="text" id="cp-name" placeholder="Provider Name (e.g., Ollama)"
+                                class="w-full bg-[#0d1117] border border-[#30363d] rounded-lg px-3 py-2 text-[12px] text-[#e6edf3] outline-none focus:border-[#58a6ff] transition">
+                            <input type="url" id="cp-url" placeholder="Base URL (e.g., http://localhost:8080/v1)"
+                                class="w-full bg-[#0d1117] border border-[#30363d] rounded-lg px-3 py-2 text-[12px] text-[#e6edf3] outline-none focus:border-[#58a6ff] transition">
+                            <div class="flex items-center gap-2">
+                                <input type="checkbox" id="cp-no-key" class="accent-blue-500">
+                                <label for="cp-no-key" class="text-[11px] text-[#8b949e]">No API key required</label>
+                            </div>
+                            <div id="cp-key-container">
+                                <input type="password" id="cp-key" placeholder="API Key (optional)"
+                                    class="w-full bg-[#0d1117] border border-[#30363d] rounded-lg px-3 py-2 text-[12px] text-[#e6edf3] outline-none focus:border-[#58a6ff] transition">
+                            </div>
+                            <div class="flex gap-2">
+                                <button id="btn-save-custom-provider"
+                                    class="flex-1 bg-[#21262d] hover:bg-[#30363d] text-[#e6edf3] text-[12px] py-2 rounded-lg transition border border-[#30363d] font-bold flex items-center justify-center gap-1">
+                                    <span class="material-symbols-rounded text-[14px]">save</span> Save
+                                </button>
+                                <button id="btn-cancel-custom-provider"
+                                    class="flex-1 bg-[#0d1117] hover:bg-[#21262d] text-[#8b949e] text-[12px] py-2 rounded-lg transition border border-[#30363d] font-bold flex items-center justify-center gap-1">
+                                    <span class="material-symbols-rounded text-[14px]">close</span> Cancel
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="h-[1px] bg-[#21262d]"></div>
                     <div class="flex justify-between items-center pt-3">
                         <button id="btn-fetch-models"
                             class="text-[12px] font-bold text-[#8b949e] hover:text-[#e6edf3] border border-[#30363d] hover:bg-[#21262d] rounded-xl px-4 py-2 flex items-center gap-2 transition"><span
